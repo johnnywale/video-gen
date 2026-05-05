@@ -155,6 +155,12 @@ describe("planToClips", () => {
     expect(clips[1].text).toBeUndefined();
   });
 
+  it("disables source-video audio (stage mode mixes bg + speech instead)", () => {
+    const plan = generateRandomStages(media, 30, 2, seq([0]));
+    const clips = planToClips(plan, { src: "/v.mp4" });
+    expect(clips.every((c) => c.audioEnabled === false)).toBe(true);
+  });
+
   it("speed=0.5 takes half the source range; back-to-back placement uses on-timeline length", () => {
     // 2 stages, on-timeline length 10s each (default since totalDuration=20, count=2)
     const plan = generateRandomStages(media, 20, 2, seq([0]));

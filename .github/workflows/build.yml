@@ -1,15 +1,9 @@
-name: Release
+name: Build
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Release tag (e.g. v0.1.0). A draft release will be created.'
-        required: true
-        type: string
 
 jobs:
   build:
@@ -19,13 +13,16 @@ jobs:
         include:
           - platform: macos-14
             target: aarch64-apple-darwin
-            name: macos-arm64
-          - platform: macos-13
-            target: x86_64-apple-darwin
-            name: macos-x64
+            artifact: video-editor-macos-arm64
+            bundle_paths: |
+              src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app
+              src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
           - platform: windows-latest
             target: x86_64-pc-windows-msvc
-            name: windows-x64
+            artifact: video-editor-windows-x64
+            bundle_paths: |
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
     runs-on: ${{ matrix.platform }}
 
@@ -55,8 +52,6 @@ jobs:
         run: |
           brew install ffmpeg pkg-config
           echo "PKG_CONFIG_PATH=$(brew --prefix ffmpeg)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-          # ffmpeg-next picks up dylibs at runtime via DYLD path; ensure
-          # bindgen finds headers during the build.
           echo "BINDGEN_EXTRA_CLANG_ARGS=-I$(brew --prefix ffmpeg)/include" >> $GITHUB_ENV
 
       - name: Install FFmpeg (Windows)
@@ -76,24 +71,21 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build and release (Tauri)
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # To enable macOS code signing + notarization, add these as repo
-          # secrets and uncomment the env lines below. Leaving them unset
-          # produces unsigned macOS artifacts; setting them to empty strings
-          # makes `security import` fail, so do not pass empty values.
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Stage FFmpeg DLLs for bundling (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $dest = "src-tauri\ffmpeg-dlls"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Path "C:\ffmpeg\bin\*.dll" -Destination $dest -Force
+          Get-ChildItem $dest
+
+      - name: Build app
+        run: npm run tauri build -- --target ${{ matrix.target }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.event.inputs.tag || github.ref_name }}
-          releaseName: 'Video Editor ${{ github.event.inputs.tag || github.ref_name }}'
-          releaseBody: 'See the assets below to download and install.'
-          releaseDraft: true
-          prerelease: false
-          args: --target ${{ matrix.target }}
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.bundle_paths }}
+          if-no-files-found: error

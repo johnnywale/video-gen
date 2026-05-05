@@ -29,7 +29,10 @@ fn main() {
             commands::get_media_url,
             commands::ai_generate_captions,
             commands::ai_generate_music,
+            commands::ai_generate_speech,
             commands::ai_diagnose_minimax,
+            commands::default_speech_cache_dir,
+            commands::list_system_fonts,
             commands::open_path,
         ])
         .run(tauri::generate_context!())

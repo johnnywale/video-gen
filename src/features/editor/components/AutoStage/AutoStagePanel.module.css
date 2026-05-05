@@ -446,6 +446,57 @@
   border-color: rgba(var(--color-accent-rgb), 0.5);
 }
 
+/* Per-stage TTS controls — sit just below the text textarea. The pill
+   on the left shows whether a (text, voice) pair is already cached
+   (绿色=已生成, 灰色=未生成); buttons trigger preview / regen. */
+.speechRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.speechStatus {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--color-border);
+  color: var(--color-text-muted);
+  background: var(--color-bg);
+}
+.speechStatusReady {
+  color: #84d28a;
+  border-color: rgba(132, 210, 138, 0.4);
+  background: rgba(132, 210, 138, 0.08);
+}
+.speechStatusBusy {
+  color: var(--color-accent);
+  border-color: rgba(var(--color-accent-rgb), 0.4);
+}
+.speechStatusError {
+  color: #e88;
+  border-color: rgba(232, 136, 136, 0.4);
+}
+.speechBtn {
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.speechBtn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: rgba(var(--color-accent-rgb), 0.5);
+  color: var(--color-accent);
+}
+.speechBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .footer {
   display: flex;
   justify-content: flex-end;

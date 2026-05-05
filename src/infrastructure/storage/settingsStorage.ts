@@ -14,6 +14,12 @@ export interface AppSettings {
   /** Where the MiniMax keys are valid. International users: api.minimax.io.
    *  China users: api.minimaxi.com. (海螺/SVID accounts are usually .com.) */
   minimaxBaseUrl: string;
+  /** User-chosen directory for cached TTS mp3 files. Empty = use the
+   *  backend default (app-local-data dir). Useful when the user wants
+   *  the cache on a specific volume, or wants to share it across
+   *  installs. The backend creates the dir lazily on the first
+   *  generation if it doesn't exist. */
+  speechCacheDir: string;
 }
 
 const KEY = "video-editor-settings";
@@ -23,6 +29,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   anthropicApiKey: "",
   minimaxApiKey: "",
   minimaxBaseUrl: "https://api.minimax.io",
+  speechCacheDir: "",
 };
 
 export function loadSettings(): AppSettings {

@@ -19,6 +19,10 @@ export function Toolbar({ onRender, onOpenAutoStage, onOpenSettings, renderState
   const [projectName, setProjectName] = useState("未命名项目");
   const [isEditingName, setIsEditingName] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
+  // Inline notice when the user clicks 打开 but the file isn't there yet
+  // (hasn't been rendered, or got moved/deleted). Auto-clears after a few
+  // seconds so it doesn't linger.
+  const [openHint, setOpenHint] = useState<string | null>(null);
 
   // Show a success banner for ~6 s after a render completes; the auto-open
   // hook in useEditor already kicks off the OS default player.
@@ -37,6 +41,22 @@ export function Toolbar({ onRender, onOpenAutoStage, onOpenSettings, renderState
       if (picked) onSetOutputPath(picked);
     } catch (e) {
       console.error("save dialog failed:", e);
+    }
+  };
+
+  const handleOpenOutput = async () => {
+    if (!outputPath) return;
+    try {
+      await openPath(outputPath);
+      setOpenHint(null);
+    } catch (e) {
+      const msg = String(e);
+      // openPath surfaces "file not found: …" when the export hasn't
+      // happened yet — we want to nudge the user toward 导出 rather
+      // than dump a raw error. Other errors get the message verbatim.
+      const friendly = msg.includes("file not found") ? "尚未导出，无法打开" : msg;
+      setOpenHint(friendly);
+      window.setTimeout(() => setOpenHint(null), 3500);
     }
   };
 
@@ -107,6 +127,15 @@ export function Toolbar({ onRender, onOpenAutoStage, onOpenSettings, renderState
             ? `导出中… ${Math.round(renderState.progress)}%`
             : "导出"}
         </button>
+        <button
+          className={styles.btnSecondary}
+          onClick={handleOpenOutput}
+          disabled={!outputPath}
+          aria-label="打开导出文件"
+          title={outputPath ? `打开 ${outputPath}` : "尚未设置输出路径"}
+        >
+          📂 打开
+        </button>
         {/* (#18) Settings now lives at the far right — the global-settings
             convention most apps follow. */}
         <button
@@ -122,6 +151,10 @@ export function Toolbar({ onRender, onOpenAutoStage, onOpenSettings, renderState
 
       {renderState.error && (
         <div className={styles.error} role="alert">{renderState.error}</div>
+      )}
+
+      {openHint && (
+        <div className={styles.error} role="status">{openHint}</div>
       )}
 
       {showSuccess && renderState.lastOutputPath && (

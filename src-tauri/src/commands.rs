@@ -1,6 +1,6 @@
 use std::process::Stdio;
-use tauri::{AppHandle, Emitter, State};
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tauri::{AppHandle, Emitter, Manager, State};
+use tokio::io::{AsyncReadExt, BufReader};
 use tokio::process::Command;
 
 use crate::media::{MediaInfo, probe_media_file};
@@ -57,15 +57,29 @@ pub async fn render_video(
         .spawn()
         .map_err(|e| format!("Failed to spawn ffmpeg: {e}"))?;
 
-    // ffmpeg writes progress + diagnostics to stderr
+    // ffmpeg writes progress + diagnostics to stderr.
+    //
+    // IMPORTANT: ffmpeg overwrites the progress line in place using `\r`
+    // (carriage return) rather than emitting a new line for each update,
+    // so a `BufReader::lines()` loop (which only splits on `\n`) sees one
+    // ever-growing "line" and emits *zero* progress events until ffmpeg
+    // finishes — looks like a frozen progress bar at 0%. We read the
+    // bytes manually and treat both `\r` and `\n` as line terminators.
+    // BufReader still does the actual I/O batching; the inner read is
+    // an in-memory copy.
     if let Some(stderr) = child.stderr.take() {
-        let mut reader = BufReader::new(stderr).lines();
         let app_clone = app.clone();
         tokio::spawn(async move {
-            while let Ok(Some(line)) = reader.next_line().await {
-                // Parse `time=HH:MM:SS.ms` for progress
+            let mut reader = BufReader::new(stderr);
+            let mut line_buf: Vec<u8> = Vec::with_capacity(256);
+            let mut byte = [0u8; 1];
+            let flush_line = |buf: &Vec<u8>, app: &AppHandle| {
+                if buf.is_empty() {
+                    return;
+                }
+                let line = String::from_utf8_lossy(buf);
                 if let Some(pct) = parse_progress(&line) {
-                    let _ = app_clone.emit("render_progress", pct);
+                    let _ = app.emit("render_progress", pct);
                 } else if line.contains("Error")
                     || line.contains("error")
                     || line.contains("Invalid")
@@ -75,7 +89,22 @@ pub async fn render_video(
                     // to the terminal so the user can see why a render failed.
                     eprintln!("[ffmpeg] {line}");
                 }
+            };
+            loop {
+                match reader.read(&mut byte).await {
+                    Ok(0) => break,
+                    Ok(_) => {}
+                    Err(_) => break,
+                }
+                if byte[0] == b'\r' || byte[0] == b'\n' {
+                    flush_line(&line_buf, &app_clone);
+                    line_buf.clear();
+                } else {
+                    line_buf.push(byte[0]);
+                }
             }
+            // Trailing content after EOF (no final terminator).
+            flush_line(&line_buf, &app_clone);
         });
     }
 
@@ -271,6 +300,95 @@ pub async fn ai_generate_captions(
     .map_err(|e| format!("task error: {e}"))?
 }
 
+/// Generate TTS audio for a single line via MiniMax `t2a_v2`. Returns the
+/// saved mp3 file path. The frontend is responsible for caching results by
+/// (text, voice_id) so this only runs on cache miss.
+///
+/// Files are written to the **app-local-data dir** (e.g. macOS:
+/// `~/Library/Application Support/<bundle>/speech-cache/`) instead of
+/// `$TMPDIR`, because the OS reaps temp dirs on reboot — that left the
+/// frontend cache pointing at gone files and 试听 silently failed.
+///
+/// On failure returns a structured `SpeechError` carrying the request +
+/// response bodies so the frontend can show a debug panel instead of just
+/// a one-line message.
+// `cache_dir`: optional user override for where to write the mp3. When
+// empty / absent the backend falls back to `app_local_data_dir()/speech-cache`.
+#[tauri::command]
+pub async fn ai_generate_speech(
+    app: AppHandle,
+    text: String,
+    voice_id: String,
+    api_key: String,
+    base_url: String,
+    cache_dir: Option<String>,
+) -> Result<String, crate::ai::SpeechError> {
+    let dest_dir = match resolve_speech_cache_dir(&app, cache_dir.as_deref()) {
+        Ok(p) => p,
+        Err(e) => {
+            return Err(crate::ai::SpeechError {
+                message: e,
+                endpoint: String::new(),
+                request_body: String::new(),
+                status: None,
+                response_body: None,
+            });
+        }
+    };
+    match tokio::task::spawn_blocking(move || {
+        crate::ai::generate_speech(&text, &voice_id, &api_key, &base_url, &dest_dir)
+    })
+    .await
+    {
+        Ok(inner) => inner,
+        Err(e) => Err(crate::ai::SpeechError {
+            message: format!("task error: {e}"),
+            endpoint: String::new(),
+            request_body: String::new(),
+            status: None,
+            response_body: None,
+        }),
+    }
+}
+
+/// Returns the directory where TTS cache files will be written. Used by
+/// the Settings panel to surface the default to the user when they
+/// haven't picked a custom location.
+#[tauri::command]
+pub fn default_speech_cache_dir(app: AppHandle) -> Result<String, String> {
+    let dir = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {e}"))?
+        .join("speech-cache");
+    Ok(dir.to_string_lossy().to_string())
+}
+
+fn resolve_speech_cache_dir(
+    app: &AppHandle,
+    user_override: Option<&str>,
+) -> Result<std::path::PathBuf, String> {
+    let trimmed = user_override.map(|s| s.trim()).filter(|s| !s.is_empty());
+    if let Some(p) = trimmed {
+        return Ok(std::path::PathBuf::from(p));
+    }
+    let base = app
+        .path()
+        .app_local_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {e}"))?;
+    Ok(base.join("speech-cache"))
+}
+
+/// Enumerate fonts installed on the host machine. Used to populate the
+/// per-stage font dropdown so users can pick a CJK-capable face that
+/// actually exists on their OS (fixes the macOS-only hardcoded path).
+#[tauri::command]
+pub async fn list_system_fonts() -> Result<Vec<crate::fonts::FontInfo>, String> {
+    tokio::task::spawn_blocking(crate::fonts::list_system_fonts)
+        .await
+        .map_err(|e| format!("task error: {e}"))?
+}
+
 /// Save file bytes to a temp location and return the file path.
 #[tauri::command]
 pub async fn save_temp_media(data: Vec<u8>, file_name: String) -> Result<String, String> {
@@ -295,9 +413,22 @@ fn which_ffmpeg() -> Result<String, String> {
     Err("ffmpeg not found on PATH".to_string())
 }
 
+/// Payload for the `render_progress` Tauri event.
+///
+/// `rename_all = "camelCase"` is load-bearing: the TS frontend listener
+/// reads `p.currentTime`, and serde's default leaves the field as
+/// `current_time`. Without the rename the deserialised value comes
+/// through as `undefined`, the percent calc becomes NaN, and the
+/// progress bar appears stuck at 0% — exactly the bug we're fixing.
 #[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct ProgressPayload {
+    /// Percentage of total render done. Currently always emitted as 0
+    /// from the backend; the frontend computes the real percent from
+    /// `currentTime` divided by the predicted output duration.
     percent: f64,
+    /// Output-side timestamp ffmpeg has reached, in seconds. Parsed
+    /// from `time=HH:MM:SS.ms` lines on stderr.
     current_time: f64,
 }
 

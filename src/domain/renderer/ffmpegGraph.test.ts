@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildFFmpegCommand, ensureCompatibleContainer } from "./ffmpegGraph";
+import { buildFFmpegCommand, ensureCompatibleContainer, buildCaptionFilter, estimateExportDuration } from "./ffmpegGraph";
 import { Timeline, Track, Clip, ProjectSettings } from "../timeline/models";
 
 const SETTINGS: ProjectSettings = {
@@ -81,17 +81,37 @@ describe("buildFFmpegCommand — audio combination", () => {
     expect(f).not.toContain("amix");
   });
 
-  it("two audio clips on one track — amix=inputs=2", () => {
+  it("two audio clips on one track — amix=inputs=2 with adelay for the offset clip", () => {
     const tl = timeline([
       audioTrack([clip({ id: "c1", src: "/a1.mp3" }), clip({ id: "c2", src: "/a2.mp3", timelineStart: 5 })]),
     ]);
     const args = buildFFmpegCommand(tl, "/out.mp4", SETTINGS);
     const f = getFilter(args);
 
+    // First clip is at t=0 → no delay needed.
     expect(f).toContain("[0:a]asetpts=PTS-STARTPTS[a0]");
-    expect(f).toContain("[1:a]asetpts=PTS-STARTPTS[a1]");
+    // Second clip starts at 5s on the timeline → adelay 5000 ms.
+    expect(f).toContain("[1:a]asetpts=PTS-STARTPTS,adelay=5000:all=1[a1]");
     expect(f).toContain("[a0][a1]amix=inputs=2[outa_mix]");
     expect(f).not.toContain("acopy");
+  });
+
+  it("audio-clip volume injects a `volume=N` filter; default 1 stays out of the chain", () => {
+    const tl = timeline([
+      audioTrack([
+        clip({ id: "loud",   src: "/loud.mp3",   volume: 1.5, timelineStart: 0 }),
+        clip({ id: "quiet",  src: "/quiet.mp3",  volume: 0.4, timelineStart: 4 }),
+        clip({ id: "normal", src: "/normal.mp3",              timelineStart: 8 }),
+      ]),
+    ]);
+    const f = getFilter(buildFFmpegCommand(tl, "/out.mp4", SETTINGS));
+    // 1.5 → `volume=1.500` (and no adelay since timelineStart=0).
+    expect(f).toContain("[0:a]asetpts=PTS-STARTPTS,volume=1.500[a0]");
+    // 0.4 + 4s offset → both filters in the chain, in this order.
+    expect(f).toContain("[1:a]asetpts=PTS-STARTPTS,volume=0.400,adelay=4000:all=1[a1]");
+    // No volume → no `volume=` filter (only adelay).
+    expect(f).toContain("[2:a]asetpts=PTS-STARTPTS,adelay=8000:all=1[a2]");
+    expect(f).not.toMatch(/\[2:a\][^[]*volume=/);
   });
 
   it("video clip + separate audio clip — amix combines video-audio + audio-clip", () => {
@@ -256,7 +276,9 @@ describe("buildFFmpegCommand — audio combination", () => {
     expect(f).toContain("[0:v]");
     expect(f).toContain("[1:v]");
     expect(f).toContain("[2:a]asetpts=PTS-STARTPTS[a2]");
-    expect(f).toContain("[3:a]asetpts=PTS-STARTPTS[a3]");
+    // a2 sits at the new "audio" track at t=0 (a3 is the offset one →
+    // gets adelay so it lands at 5s in the mix).
+    expect(f).toContain("[3:a]asetpts=PTS-STARTPTS,adelay=5000:all=1[a3]");
     expect(f).toContain("[va0][va1][a2][a3]amix=inputs=4[outa_mix]");
   });
 });
@@ -512,5 +534,140 @@ describe("buildFFmpegCommand — transitions", () => {
     const f = getFilter(args);
     // 5 - 0.5 = 4.500
     expect(f).toContain("xfade=transition=fade:duration=0.5:offset=4.500[outv]");
+  });
+});
+
+describe("estimateExportDuration", () => {
+  const mkTl = (clips: Clip[], muted = false): Timeline => ({
+    tracks: [{ id: "vt", type: "video", clips, muted, locked: false, hidden: false }],
+    duration: 0,
+  });
+
+  it("returns 0 for an empty timeline (no baseline for the progress bar)", () => {
+    expect(estimateExportDuration({ tracks: [], duration: 0 })).toBe(0);
+  });
+
+  it("returns 0 when the only video track is muted (excluded by ffmpeg)", () => {
+    const tl = mkTl([clip({ start: 0, end: 5 })], true);
+    expect(estimateExportDuration(tl)).toBe(0);
+  });
+
+  it("sums on-timeline durations across clips", () => {
+    const tl = mkTl([
+      clip({ start: 0, end: 4 }),                   // 4 s
+      clip({ start: 0, end: 6, timelineStart: 4 }), // 6 s
+    ]);
+    expect(estimateExportDuration(tl)).toBeCloseTo(10, 5);
+  });
+
+  it("honours speed: a 1.8s source at speed 0.3 occupies 6s", () => {
+    const tl = mkTl([clip({ start: 0, end: 1.8, speed: 0.3 })]);
+    expect(estimateExportDuration(tl)).toBeCloseTo(6, 5);
+  });
+
+  it("subtracts (N-1)·td when xfade is on (matches user's 30s-from-36.8s case)", () => {
+    const tl = mkTl([
+      clip({ start: 0, end: 1.8, speed: 0.3 }),                       // 6 s on-timeline
+      clip({ start: 0, end: 1.8, speed: 0.3, timelineStart: 6 }),
+      clip({ start: 0, end: 1.8, speed: 0.3, timelineStart: 12 }),
+      clip({ start: 0, end: 1.8, speed: 0.3, timelineStart: 18 }),
+      clip({ start: 0, end: 1.8, speed: 0.3, timelineStart: 24 }),
+    ]);
+    const settings = { ...SETTINGS, transitionType: "fadeblack" as const, transitionDuration: 1.7 };
+    // 5 × 6 = 30, minus 4 × 1.7 = 6.8 → 23.2
+    expect(estimateExportDuration(tl, settings)).toBeCloseTo(23.2, 3);
+  });
+
+  it("ignores xfade when transitionType is none, even for many clips", () => {
+    const tl = mkTl([
+      clip({ start: 0, end: 5 }),
+      clip({ start: 0, end: 5, timelineStart: 5 }),
+    ]);
+    expect(estimateExportDuration(tl, SETTINGS)).toBeCloseTo(10, 5);
+  });
+});
+
+describe("buildCaptionFilter", () => {
+  it("returns empty for missing or whitespace-only text", () => {
+    expect(buildCaptionFilter(undefined, 0, 1920, 1080)).toBe("");
+    expect(buildCaptionFilter("", 0, 1920, 1080)).toBe("");
+    expect(buildCaptionFilter("   \n\t", 0, 1920, 1080)).toBe("");
+  });
+
+  it("emits a drawtext filter with the caption text quoted and styled", () => {
+    const f = buildCaptionFilter("山高路远", 0, 1920, 1080);
+    expect(f).toContain("drawtext=fontfile=/System/Library/Fonts/PingFang.ttc");
+    expect(f).toContain("text='山高路远'");
+    expect(f).toContain("fontcolor=#FFD700");           // style 0 → 金色
+    expect(f).toContain("y=h-text_h-86");                // bottom margin (1080 * 0.08)
+    expect(f).toContain("fontsize=60");                  // 1080 / 18
+  });
+
+  it("style 4 (红色, 顶部) puts the y at the top margin", () => {
+    const f = buildCaptionFilter("提示", 4, 1920, 1080);
+    expect(f).toContain("fontcolor=#FF4040");
+    expect(f).toContain("y=86");                          // top, no h-text_h offset
+  });
+
+  it("escapes characters that are special inside a drawtext literal", () => {
+    const f = buildCaptionFilter("don't 50%\\path", 1, 1920, 1080);
+    // ' → \', % → \%, \ → \\
+    expect(f).toContain("text='don\\'t 50\\%\\\\path'");
+  });
+
+  it("collapses newlines so they don't show as escape sequences", () => {
+    const f = buildCaptionFilter("line one\nline two", 0, 1920, 1080);
+    expect(f).toContain("text='line one line two'");
+    expect(f).not.toContain("\\n");
+  });
+
+  it("inserts the drawtext into the per-clip filter chain when text is set", () => {
+    const tl: Timeline = {
+      tracks: [{
+        id: "vt",
+        type: "video",
+        clips: [{
+          id: "c1",
+          src: "/v.mp4",
+          start: 0,
+          end: 5,
+          timelineStart: 0,
+          name: "stage 1",
+          text: "你好世界",
+          textStyle: 2,
+        }],
+        muted: false,
+        locked: false,
+        hidden: false,
+      }],
+      duration: 5,
+    };
+    const f = getFilter(buildFFmpegCommand(tl, "/out.mp4", SETTINGS));
+    expect(f).toContain("format=yuv420p,drawtext=");
+    expect(f).toContain("text='你好世界'");
+    expect(f).toContain("fontcolor=#00FFFF");           // style 2 → 青色
+  });
+
+  it("clips without text get NO drawtext segment", () => {
+    const tl: Timeline = {
+      tracks: [{
+        id: "vt",
+        type: "video",
+        clips: [{
+          id: "c1",
+          src: "/v.mp4",
+          start: 0,
+          end: 5,
+          timelineStart: 0,
+          name: "no caption",
+        }],
+        muted: false,
+        locked: false,
+        hidden: false,
+      }],
+      duration: 5,
+    };
+    const f = getFilter(buildFFmpegCommand(tl, "/out.mp4", SETTINGS));
+    expect(f).not.toContain("drawtext=");
   });
 });

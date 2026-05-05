@@ -33,7 +33,7 @@ export function EditorPage() {
     setOutputPath,
   } = useEditor();
 
-  const { trimClip, moveClip, toggleClipAudio, setPlayheadPosition, projectSettings, updateProjectSettings, timeRanges, updateTimeRange, removeTimeRange } = useEditorStore();
+  const { trimClip, moveClip, toggleClipAudio, setClipVolume, setPlayheadPosition, projectSettings, updateProjectSettings, timeRanges, updateTimeRange, removeTimeRange } = useEditorStore();
 
   useKeyboardShortcuts();
 
@@ -128,6 +128,7 @@ export function EditorPage() {
           onTrimClip={trimClip}
           onMoveClip={moveClip}
           onToggleClipAudio={toggleClipAudio}
+          onSetClipVolume={setClipVolume}
           onUpdateProjectSettings={updateProjectSettings}
           onUpdateTimeRange={updateTimeRange}
           onRemoveTimeRange={removeTimeRange}

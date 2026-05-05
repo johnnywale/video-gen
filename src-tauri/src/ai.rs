@@ -4,8 +4,39 @@
 //! stateless.
 
 use base64::Engine;
+use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
+
+/// Structured error for TTS calls so the frontend can render a debug
+/// panel containing the exact request/response that failed. Used only
+/// by `generate_speech` for now — other AI calls still return plain
+/// `String` errors.
+#[derive(Debug, Serialize, Clone)]
+pub struct SpeechError {
+    /// Human-readable summary (Chinese — surfaces as the toast/pill text).
+    pub message: String,
+    /// Endpoint that was hit (URL with query, no key).
+    pub endpoint: String,
+    /// Pretty-printed JSON request body, with `Authorization` redacted.
+    pub request_body: String,
+    /// HTTP status when we got that far; None for transport errors.
+    pub status: Option<u16>,
+    /// Raw response body (the API often puts the human error here).
+    pub response_body: Option<String>,
+}
+
+impl SpeechError {
+    fn pre_request(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            endpoint: String::new(),
+            request_body: String::new(),
+            status: None,
+            response_body: None,
+        }
+    }
+}
 
 /// Default prompt template — used when the topic doesn't have a custom one.
 /// Placeholders: `{topic}`, `{count}`.
@@ -93,6 +124,191 @@ pub fn generate_captions(
 }
 
 const MUSIC_MODEL: &str = "music-2.6";
+const SPEECH_MODEL: &str = "speech-2.8-hd";
+
+/// Generate TTS audio for a single line of text using MiniMax `t2a_v2`.
+/// Returns the saved mp3 file path. The response body contains audio as
+/// either a hex string or base64; we accept both (mirrors music_generate).
+///
+/// `dest_dir` is where the resulting mp3 lives. Callers should pass a
+/// **persistent** directory (e.g. the app-local-data dir) — earlier
+/// versions used `std::env::temp_dir()` and macOS reaped the files at
+/// reboot, so the speech cache surfaced "已生成" on stages whose audio
+/// no longer existed and 试听 silently failed.
+///
+/// The frontend caches results by (text, voice_id) and only calls this
+/// when a cache miss happens — so the slow path runs once per unique
+/// pair, not on every preview.
+pub fn generate_speech(
+    text: &str,
+    voice_id: &str,
+    api_key: &str,
+    base_url: &str,
+    dest_dir: &std::path::Path,
+) -> Result<String, SpeechError> {
+    let text = text.trim();
+    if text.is_empty() {
+        return Err(SpeechError::pre_request("文字为空"));
+    }
+    let voice_id = voice_id.trim();
+    if voice_id.is_empty() {
+        return Err(SpeechError::pre_request("voice_id 为空"));
+    }
+    let api_key = api_key.trim();
+    if api_key.is_empty() {
+        return Err(SpeechError::pre_request("MiniMax API 密钥未设置（请在设置中填写）"));
+    }
+    let base = base_url.trim().trim_end_matches('/');
+    if base.is_empty() {
+        return Err(SpeechError::pre_request("MiniMax 服务地址为空（请在设置中填写）"));
+    }
+    let endpoint = format!("{base}/v1/t2a_v2");
+    let fingerprint = key_fingerprint(api_key);
+    eprintln!(
+        "[ai::generate_speech] POST {endpoint}  key_fp={fingerprint}  voice={voice_id}  chars={}",
+        text.chars().count()
+    );
+
+    let body = json!({
+        "model": SPEECH_MODEL,
+        "text": text,
+        "stream": false,
+        "voice_setting": {
+            "voice_id": voice_id,
+            "speed": 1.0,
+            "vol": 1.0,
+            "pitch": 0,
+        },
+        "audio_setting": {
+            "sample_rate": 32000,
+            "bitrate": 128000,
+            "format": "mp3",
+            "channel": 1,
+        },
+        // The reference curl includes `language_boost: "Chinese"` to nudge
+        // pronunciation for the curated Chinese voice IDs we ship. Keep it
+        // even for English text — the parameter is a hint, not a filter.
+        "language_boost": "Chinese",
+        // Force hex output so we always hit the hex decode path; without
+        // this MiniMax may return base64 (still handled by decode_audio_payload,
+        // but explicit beats implicit).
+        "output_format": "hex",
+    });
+    let request_body_pretty = serde_json::to_string_pretty(&body).unwrap_or_else(|_| body.to_string());
+
+    let mk_err = |message: String, status: Option<u16>, response_body: Option<String>| SpeechError {
+        message,
+        endpoint: endpoint.clone(),
+        request_body: request_body_pretty.clone(),
+        status,
+        response_body,
+    };
+
+    let send_result = ureq::post(&endpoint)
+        .set("Content-Type", "application/json")
+        .set("Authorization", &format!("Bearer {api_key}"))
+        .timeout(std::time::Duration::from_secs(120))
+        .send_json(body);
+
+    let resp = match send_result {
+        Ok(r) => r,
+        Err(ureq::Error::Status(code, resp)) => {
+            let body = resp.into_string().unwrap_or_else(|e| format!("(read body err: {e})"));
+            return Err(mk_err(
+                format!("配音生成请求失败 (HTTP {code})"),
+                Some(code),
+                Some(body),
+            ));
+        }
+        Err(other) => {
+            return Err(mk_err(format!("配音生成请求失败: {other}"), None, None));
+        }
+    };
+
+    let status_code = resp.status();
+    let raw_body = resp
+        .into_string()
+        .unwrap_or_else(|e| format!("(read body err: {e})"));
+
+    let json: Value = match serde_json::from_str(&raw_body) {
+        Ok(v) => v,
+        Err(e) => {
+            return Err(mk_err(
+                format!("响应不是 JSON: {e}"),
+                Some(status_code),
+                Some(raw_body),
+            ));
+        }
+    };
+
+    let mm_status = json
+        .pointer("/base_resp/status_code")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(-1);
+    if mm_status != 0 {
+        let msg = json
+            .pointer("/base_resp/status_msg")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        return Err(mk_err(
+            format!("配音生成失败: {msg}"),
+            Some(status_code),
+            Some(raw_body),
+        ));
+    }
+
+    // Per MiniMax docs the audio bytes live at `data.audio`. Some proxies
+    // surface it at the top level — try both.
+    let audio_str = match json
+        .pointer("/data/audio")
+        .and_then(|v| v.as_str())
+        .or_else(|| json.pointer("/audio").and_then(|v| v.as_str()))
+    {
+        Some(s) => s,
+        None => {
+            return Err(mk_err(
+                "响应缺少 data.audio 字段".to_string(),
+                Some(status_code),
+                Some(raw_body),
+            ));
+        }
+    };
+
+    let bytes = match decode_audio_payload(audio_str) {
+        Some(b) => b,
+        None => {
+            return Err(mk_err(
+                "音频数据无法解码（hex 与 base64 均失败）".to_string(),
+                Some(status_code),
+                Some(raw_body),
+            ));
+        }
+    };
+    if bytes.is_empty() {
+        return Err(mk_err(
+            "解码到的音频为空".to_string(),
+            Some(status_code),
+            Some(raw_body),
+        ));
+    }
+
+    std::fs::create_dir_all(dest_dir)
+        .map_err(|e| mk_err(format!("创建配音目录失败: {e}"), Some(status_code), None))?;
+    let safe_voice: String = voice_id
+        .chars()
+        .take(24)
+        .map(|c| if c.is_alphanumeric() || c == '_' { c } else { '_' })
+        .collect();
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let filename = format!("speech_{safe_voice}_{stamp}.mp3");
+    let path: PathBuf = dest_dir.join(filename);
+    std::fs::write(&path, bytes)
+        .map_err(|e| mk_err(format!("写入文件失败: {e}"), Some(status_code), None))?;
+    Ok(path.to_string_lossy().to_string())
+}
 
 /// Generate instrumental background music from a free-form mood prompt.
 /// Mirrors the `music_generation` provider in the user's reference Python

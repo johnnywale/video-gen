@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSettingsStore } from "../../store/settingsStore";
-import { aiDiagnoseMiniMax } from "@/infrastructure/tauri/commands";
+import { aiDiagnoseMiniMax, defaultSpeechCacheDir, openPath } from "@/infrastructure/tauri/commands";
 import styles from "./SettingsPanel.module.css";
 
 interface Props {
@@ -16,6 +16,17 @@ export function SettingsPanel({ onClose }: Props) {
   const [showMinimaxKey, setShowMinimaxKey] = useState(false);
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagResult, setDiagResult] = useState<string | null>(null);
+  // The backend's default cache dir, surfaced as a placeholder so the
+  // user can see what they'd be overriding without us having to bake
+  // platform paths into the frontend.
+  const [defaultCacheDir, setDefaultCacheDir] = useState<string>("");
+  useEffect(() => {
+    let cancelled = false;
+    defaultSpeechCacheDir()
+      .then((p) => { if (!cancelled) setDefaultCacheDir(p); })
+      .catch(() => { /* tolerate older backends */ });
+    return () => { cancelled = true; };
+  }, []);
 
   const handleTestConnection = async () => {
     setDiagBusy(true);
@@ -130,6 +141,36 @@ export function SettingsPanel({ onClose }: Props) {
                   {diagResult}
                 </pre>
               )}
+            </div>
+          </div>
+          <div className={styles.section}>
+            <span className={styles.sectionTitle}>配音缓存</span>
+            <span className={styles.help}>
+              生成的 TTS mp3 文件将写入此目录，下次相同 (文字, 音色) 的请求会直接命中缓存。
+              留空使用默认路径（位于应用数据目录），重启系统后仍可访问。
+            </span>
+            <div className={styles.field}>
+              <label>缓存目录</label>
+              <input
+                type="text"
+                value={settings.speechCacheDir}
+                placeholder={defaultCacheDir || "（默认）"}
+                onChange={(e) => setSettings({ speechCacheDir: e.target.value })}
+              />
+            </div>
+            <div className={styles.field}>
+              <button
+                className={styles.secondaryBtn}
+                onClick={() => {
+                  const target = settings.speechCacheDir.trim() || defaultCacheDir;
+                  if (target) openPath(target).catch(() => { /* dir may not exist yet */ });
+                }}
+                disabled={!settings.speechCacheDir.trim() && !defaultCacheDir}
+                style={{ alignSelf: "flex-start" }}
+                type="button"
+              >
+                打开当前目录
+              </button>
             </div>
           </div>
         </div>

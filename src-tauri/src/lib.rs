@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod commands;
+pub mod fonts;
 pub mod media;
 pub mod media_processing;
 pub mod media_server;

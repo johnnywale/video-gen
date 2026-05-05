@@ -15,6 +15,9 @@ export interface Stage {
   speed?: number;
   /** Index into the export-time text overlay style table. Default 0. */
   textStyle?: number;
+  /** Font family for caption rendering. When absent, the export uses the
+   *  project's default CJK font (picked from fontsStore). */
+  fontFamily?: string;
 }
 
 export interface StagePlan {
@@ -104,7 +107,7 @@ export function rerollStage(
 export function updateStage(
   plan: StagePlan,
   stageId: string,
-  patch: Partial<Pick<Stage, "sourceTime" | "length" | "thumbnail" | "text" | "speed" | "textStyle">>
+  patch: Partial<Pick<Stage, "sourceTime" | "length" | "thumbnail" | "text" | "speed" | "textStyle" | "fontFamily">>
 ): StagePlan {
   return {
     ...plan,
@@ -145,9 +148,14 @@ export function planToClips(
       end: s.sourceTime + sourceLen,
       timelineStart: cursor,
       name: `Stage ${out.length + 1}`,
+      // Stage mode mixes background-track audio + per-stage TTS speech,
+      // so the source video's native audio is suppressed by default.
+      // The user can re-enable per-clip from the inspector if needed.
+      audioEnabled: false,
       ...(s.text ? { text: s.text } : {}),
       ...(s.speed !== undefined && s.speed !== 1 ? { speed: s.speed } : {}),
       ...(s.textStyle !== undefined ? { textStyle: s.textStyle } : {}),
+      ...(s.fontFamily ? { fontFamily: s.fontFamily } : {}),
     });
     cursor += s.length;
   }

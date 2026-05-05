@@ -8,6 +8,10 @@ export type Clip = {
   timelineStart: number; // position on timeline in seconds
   name: string;
   audioEnabled?: boolean; // whether to include original audio (defaults to true)
+  /** Per-clip audio gain. 1 = unchanged, 0 = silent, 2 = +6 dB. Applied
+   *  during preview (HTMLAudioElement.volume, capped to [0, 1]) and at
+   *  export (ffmpeg `volume=N` filter, no cap). Defaults to 1 when absent. */
+  volume?: number;
   text?: string;         // optional caption / TTS source for this clip
   /**
    * Playback speed multiplier. 1 = normal. <1 = slow motion (e.g. 0.5 = 2× slow).
@@ -17,6 +21,10 @@ export type Clip = {
   speed?: number;
   /** Index into a predefined text-overlay style table (0-based). */
   textStyle?: number;
+  /** Font family used to render `text` in the export. Resolved against
+   *  the user's installed fonts (via fontsStore) at render time; falls
+   *  back to the project default when absent or unknown. */
+  fontFamily?: string;
 };
 
 export type Track = {

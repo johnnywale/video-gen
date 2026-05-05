@@ -11,6 +11,7 @@ interface Props {
   onTrimClip: (trackId: string, clipId: string, start: number, end: number) => void;
   onMoveClip: (trackId: string, clipId: string, timelineStart: number) => void;
   onToggleClipAudio: (trackId: string, clipId: string) => void;
+  onSetClipVolume: (trackId: string, clipId: string, volume: number) => void;
   onUpdateProjectSettings: (settings: Partial<ProjectSettings>) => void;
   onUpdateTimeRange: (id: string, updates: Partial<Pick<TimeRange, "inPoint" | "outPoint" | "label">>) => void;
   onRemoveTimeRange: (id: string) => void;
@@ -34,7 +35,7 @@ function formatTime(seconds: number): string {
   return `${m}:${s.padStart(5, "0")}`;
 }
 
-export function PropertyInspector({ clip, track, projectSettings, timeRanges, onTrimClip, onMoveClip, onToggleClipAudio, onUpdateProjectSettings, onUpdateTimeRange, onRemoveTimeRange, style }: Props) {
+export function PropertyInspector({ clip, track, projectSettings, timeRanges, onTrimClip, onMoveClip, onToggleClipAudio, onSetClipVolume, onUpdateProjectSettings, onUpdateTimeRange, onRemoveTimeRange, style }: Props) {
   if (!clip || !track) {
     return (
       <div className={styles.inspector} style={style}>
@@ -314,6 +315,51 @@ export function PropertyInspector({ clip, track, projectSettings, timeRanges, on
                 onClick={() => onToggleClipAudio(track.id, clip.id)}
               >
                 {clip.audioEnabled !== false ? "开" : "关"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {track.type === "audio" && (
+          <div className={styles.section}>
+            <div className={styles.sectionTitle}>音量</div>
+            <div className={styles.row}>
+              <label className={styles.label}>
+                增益
+                <span className={styles.helpHint} title="0 = 静音；1.0 = 原始音量；2.0 ≈ +6 dB；最大 4.0 ≈ +12 dB。预览时受浏览器限制最高为 1.0，导出按实际值生效。">?</span>
+              </label>
+              <input
+                className={styles.input}
+                type="range"
+                min="0"
+                max="4"
+                step="0.05"
+                value={clip.volume ?? 1}
+                onChange={(e) => onSetClipVolume(track.id, clip.id, parseFloat(e.target.value))}
+              />
+            </div>
+            <div className={styles.row}>
+              <label className={styles.label}>数值</label>
+              <input
+                className={styles.input}
+                type="number"
+                min="0"
+                max="4"
+                step="0.05"
+                value={Number((clip.volume ?? 1).toFixed(2))}
+                onChange={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (!isNaN(val)) onSetClipVolume(track.id, clip.id, val);
+                }}
+              />
+            </div>
+            <div className={styles.row}>
+              <button
+                className={styles.toggleBtn}
+                onClick={() => onSetClipVolume(track.id, clip.id, 1)}
+                title="重置为 1.0（原始音量）"
+              >
+                重置 1.0
               </button>
             </div>
           </div>

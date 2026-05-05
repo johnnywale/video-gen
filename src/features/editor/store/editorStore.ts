@@ -45,6 +45,7 @@ interface EditorState {
   splitClipAtPlayhead: (trackId: string, clipId: string) => void;
   deleteSelectedClip: () => void;
   toggleClipAudio: (trackId: string, clipId: string) => void;
+  setClipVolume: (trackId: string, clipId: string, volume: number) => void;
 
   // Track controls
   toggleTrackMuted: (trackId: string) => void;
@@ -248,6 +249,20 @@ export const useEditorStore = create<EditorState>((set) => ({
       const clip = track?.clips.find((c) => c.id === clipId);
       if (!clip) return state;
       const updated = updateClip(state.timeline, trackId, { ...clip, audioEnabled: clip.audioEnabled === false });
+      return withUndo(state, updated);
+    }),
+
+  setClipVolume: (trackId, clipId, volume) =>
+    set((state) => {
+      const track = state.timeline.tracks.find((t) => t.id === trackId);
+      const clip = track?.clips.find((c) => c.id === clipId);
+      if (!clip) return state;
+      // Clamp to [0, 4]: 0 = silent, 4 = +12 dB. The ffmpeg `volume`
+      // filter accepts arbitrary floats but values past +12 dB clip
+      // hard on most playback devices — capping at 4 keeps the slider
+      // honest about what's audibly useful.
+      const clamped = Math.max(0, Math.min(4, volume));
+      const updated = updateClip(state.timeline, trackId, { ...clip, volume: clamped });
       return withUndo(state, updated);
     }),
 

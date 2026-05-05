@@ -8,6 +8,10 @@ interface ActiveAudio {
   src: string;
   sourceTime: number;
   muted: boolean;
+  /** Clip volume clamped to [0, 1] for the preview element. The export
+   *  path supports >1 (gain), but HTMLAudioElement.volume can't exceed 1
+   *  — the user is told this in the inspector help tooltip. */
+  volume: number;
 }
 
 const SYNC_INTERVAL_MS = 250;
@@ -22,11 +26,13 @@ function findActiveAudioOnlyClips(timeline: Timeline, playhead: number): ActiveA
     for (const clip of track.clips) {
       const dur = clipDuration(clip);
       if (playhead < clip.timelineStart || playhead >= clip.timelineStart + dur) continue;
+      const rawVol = clip.volume ?? 1;
       out.push({
         clipId: clip.id,
         src: clip.src,
         sourceTime: clip.start + (playhead - clip.timelineStart),
         muted: track.muted || clip.audioEnabled === false,
+        volume: Math.max(0, Math.min(1, rawVol)),
       });
     }
   }
@@ -85,6 +91,7 @@ export function useAudioTrackPlayback() {
       for (const a of active) {
         const el = getEl(a.src);
         el.muted = a.muted;
+        el.volume = a.volume;
 
         const wasActive = activeClips.current.has(a.clipId);
         if (!wasActive) {

@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useEditorStore } from "../store/editorStore";
+import { useFontsStore } from "../store/fontsStore";
 import { renderProject } from "../services/renderService";
 import { onRenderProgress, onRenderComplete, onRenderError, onFileDrop } from "@/infrastructure/tauri/event";
 import { openFilePicker, probeMedia, getMediaUrl, openPath } from "@/infrastructure/tauri/commands";
-import { ensureCompatibleContainer } from "@/domain/renderer/ffmpegGraph";
+import { ensureCompatibleContainer, estimateExportDuration } from "@/domain/renderer/ffmpegGraph";
 import { findInsertPosition } from "@/domain/timeline/track";
 
 export interface RenderState {
@@ -23,11 +24,24 @@ export function useEditor() {
     error: null,
     lastOutputPath: null,
   });
+  // Captured at render-start. ffmpeg's stderr emits the *output* timestamp
+  // (post-xfade), so dividing by this gives a real 0→100 progress curve
+  // instead of the previous 0-then-snap-to-100 jump.
+  const renderTotalRef = useRef<number>(0);
 
   // Listen for render events
   useEffect(() => {
     const listeners = Promise.all([
-      onRenderProgress((p) => setRenderState((s) => ({ ...s, progress: p.percent }))),
+      onRenderProgress((p) => setRenderState((s) => {
+        const total = renderTotalRef.current;
+        if (total <= 0) {
+          // No reliable baseline (audio-only export, or render started
+          // before total was captured). Leave progress where it is.
+          return s;
+        }
+        const next = Math.min(99, Math.max(s.progress, (p.currentTime / total) * 100));
+        return { ...s, progress: next };
+      })),
       onRenderComplete(() => {
         // The actual saved path may differ from the user's outputPath if
         // we auto-corrected the extension (e.g. .mp4 → .webm for VP9).
@@ -82,8 +96,31 @@ export function useEditor() {
       return;
     }
     setRenderState({ isRendering: true, progress: 0, error: null, lastOutputPath: null });
+    // Capture the predicted output duration so the stderr ticks have a
+    // baseline to divide by. Falls back to 0 (== no progress curve) for
+    // audio-only timelines.
+    renderTotalRef.current = estimateExportDuration(store.timeline, store.projectSettings);
     try {
-      await renderProject(store.timeline, store.outputPath, store.projectSettings, store.mediaFiles);
+      // Build the per-render font lookup from the cached system list. The
+      // graph honours `clip.fontFamily` first, falling back to the
+      // project default (best CJK-capable font we found at hydrate).
+      const fontsState = useFontsStore.getState();
+      const familyToPath: Record<string, string> = {};
+      for (const f of fontsState.fonts) {
+        // Multiple faces share the same family name (Regular, Bold, …);
+        // first one wins so the default-weight face is used.
+        if (!(f.family in familyToPath)) familyToPath[f.family] = f.path;
+      }
+      const defaultPath = fontsState.defaultCjkFamily
+        ? familyToPath[fontsState.defaultCjkFamily]
+        : undefined;
+      await renderProject(
+        store.timeline,
+        store.outputPath,
+        store.projectSettings,
+        store.mediaFiles,
+        { familyToPath, defaultPath }
+      );
     } catch (err) {
       setRenderState({ isRendering: false, progress: 0, error: String(err), lastOutputPath: null });
     }

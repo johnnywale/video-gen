@@ -31,12 +31,14 @@ describe("settingsStorage", () => {
       anthropicApiKey: "sk-test",
       minimaxApiKey: "mm-test",
       minimaxBaseUrl: "https://api.minimaxi.com",
+      speechCacheDir: "/Users/x/cache",
     });
     expect(loadSettings()).toEqual({
       anthropicBaseUrl: "https://api.example/v1",
       anthropicApiKey: "sk-test",
       minimaxApiKey: "mm-test",
       minimaxBaseUrl: "https://api.minimaxi.com",
+      speechCacheDir: "/Users/x/cache",
     });
   });
 

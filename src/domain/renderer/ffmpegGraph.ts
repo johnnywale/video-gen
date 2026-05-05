@@ -1,6 +1,68 @@
 import { Timeline, ProjectSettings, DEFAULT_PROJECT_SETTINGS, MediaFile } from "../timeline/models";
 
 /**
+ * Caption colours per `clip.textStyle` index. Mirrors the labels shown in
+ * AutoStagePanel.tsx:
+ *   0 — 金色, 1 — 白色, 2 — 青色, 3 — 白色, 4 — 红色（顶部）
+ * Animation hints (typewriter / slide-in) referenced in the labels are
+ * intentionally not implemented yet — colour + position is the minimum
+ * for "captions appear in the export".
+ */
+const CAPTION_COLORS = ["#FFD700", "#FFFFFF", "#00FFFF", "#FFFFFF", "#FF4040"];
+
+/** Default fontfile. macOS ships PingFang as the system CJK font; if the
+ *  user's machine is Linux/Windows they'll see latin-only fallback unless
+ *  they override. Kept here as the single point of change. */
+const DEFAULT_CAPTION_FONT = "/System/Library/Fonts/PingFang.ttc";
+
+/** Escape a caption string for ffmpeg's drawtext `text='...'` literal.
+ *  Inside single-quoted filter values, only `\` and `'` are special;
+ *  drawtext additionally treats `%` as a format-expression prefix. */
+function escapeDrawTextLiteral(s: string): string {
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "\\'")
+    .replace(/%/g, "\\%");
+}
+
+/** Build the `drawtext=...` segment for one clip's caption, or empty
+ *  string if the clip has no text. Returns the bare filter (no leading
+ *  comma) so the caller can decide whether to chain it. */
+export function buildCaptionFilter(
+  text: string | undefined,
+  styleIdx: number | undefined,
+  // _width reserved for future text-wrapping logic; positioning currently
+  // only needs height (vertical margin + fontsize derivation).
+  _width: number,
+  height: number,
+  fontFile: string = DEFAULT_CAPTION_FONT
+): string {
+  // drawtext doesn't render `\n`; collapse newlines so multi-line
+  // captions don't end up as visible escape sequences in the output.
+  const cleaned = (text ?? "").replace(/[\r\n]+/g, " ").trim();
+  if (!cleaned) return "";
+  const escaped = escapeDrawTextLiteral(cleaned);
+  const idx = styleIdx ?? 0;
+  const color = CAPTION_COLORS[idx] ?? "#FFFFFF";
+  // Style 4 (红色) sits near the top of the frame; everything else
+  // bottom-aligned at ~10% from the edge.
+  const margin = Math.round(height * 0.08);
+  const yExpr = idx === 4 ? `${margin}` : `h-text_h-${margin}`;
+  // Roughly 60 px on 1080p, scaling with output height.
+  const fontSize = Math.max(20, Math.round(height / 18));
+  return [
+    `drawtext=fontfile=${fontFile}`,
+    `text='${escaped}'`,
+    `fontsize=${fontSize}`,
+    `fontcolor=${color}`,
+    `x=(w-text_w)/2`,
+    `y=${yExpr}`,
+    `box=1:boxcolor=black@0.45:boxborderw=12`,
+    `shadowcolor=black:shadowx=2:shadowy=2`,
+  ].join(":");
+}
+
+/**
  * Pick an output container that works with the chosen video codec.
  * VP9 → .webm; H.264/H.265 → .mp4. Returns the path with a corrected
  * extension when needed; passes through otherwise.
@@ -36,11 +98,21 @@ export function ensureCompatibleContainer(
  * source video has no audio stream — referencing `[N:a]` on a video-only
  * input makes ffmpeg fail the whole filter graph.
  */
+/** Per-render font lookup. Maps each `clip.fontFamily` to the on-disk
+ *  font file path (built by the caller from useFontsStore.fonts). The
+ *  `defaultPath` is used for clips without `fontFamily`, or whose
+ *  family isn't in the map. */
+export interface FontResolution {
+  familyToPath?: Record<string, string>;
+  defaultPath?: string;
+}
+
 export function buildFFmpegCommand(
   timeline: Timeline,
   outputPath: string,
   settings: ProjectSettings = DEFAULT_PROJECT_SETTINGS,
-  mediaFiles: MediaFile[] = []
+  mediaFiles: MediaFile[] = [],
+  fonts: FontResolution = {}
 ): string[] {
   const { width, height, fps, codec, crf, preset, audioBitrate } = settings;
   const transitionType = settings.transitionType ?? "none";
@@ -77,11 +149,23 @@ export function buildFFmpegCommand(
         ? `setpts=${(1 / speed).toFixed(4)}*(PTS-STARTPTS)`
         : `setpts=PTS-STARTPTS`;
 
+      // Caption is drawn AFTER scaling so font sizing matches the output
+      // resolution rather than the source. Skipped (empty string) when
+      // the clip has no text — keeps the filter graph minimal. Font
+      // lookup: clip.fontFamily → fonts.familyToPath, then the project
+      // default, then the hardcoded macOS PingFang fallback.
+      const fontPath =
+        (clip.fontFamily && fonts.familyToPath?.[clip.fontFamily]) ||
+        fonts.defaultPath ||
+        DEFAULT_CAPTION_FONT;
+      const captionFilter = buildCaptionFilter(clip.text, clip.textStyle, width, height, fontPath);
+      const captionChain = captionFilter ? `,${captionFilter}` : "";
       filterParts.push(
         `[${inputIndex}:v]${setptsExpr},` +
         `scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
         `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,` +
         `setsar=1,fps=${fps},format=yuv420p` +
+        captionChain +
         `[v${inputIndex}]`
       );
 
@@ -115,7 +199,20 @@ export function buildFFmpegCommand(
   for (const track of audioTracks) {
     for (const clip of track.clips) {
       inputs.push("-ss", String(clip.start), "-to", String(clip.end), "-i", clip.src);
-      filterParts.push(`[${inputIndex}:a]asetpts=PTS-STARTPTS[a${inputIndex}]`);
+      // Honour clip.timelineStart in the export. Without `adelay`, every
+      // audio-track input plays from t=0 in the amix output regardless of
+      // its placement, so multiple voiceover or looped-bgm clips collapsed
+      // onto each other and produced overlapping/disjointed audio.
+      // adelay with `:all=1` applies the delay to every channel; we use
+      // a single millisecond value (rounded) for both channels.
+      const delayMs = Math.max(0, Math.round((clip.timelineStart ?? 0) * 1000));
+      // Per-clip gain. Skip the filter at exactly 1 (the default) so the
+      // graph stays minimal in the common case.
+      const vol = clip.volume ?? 1;
+      const filterChain: string[] = [`[${inputIndex}:a]asetpts=PTS-STARTPTS`];
+      if (vol !== 1) filterChain.push(`volume=${vol.toFixed(3)}`);
+      if (delayMs > 0) filterChain.push(`adelay=${delayMs}:all=1`);
+      filterParts.push(`${filterChain.join(",")}[a${inputIndex}]`);
       audioLabels.push(`[a${inputIndex}]`);
       inputIndex++;
     }
@@ -232,4 +329,37 @@ export function buildFFmpegCommand(
   );
 
   return ["ffmpeg", ...args];
+}
+
+/**
+ * Predict the export's wall-clock duration so the UI can compute a smooth
+ * progress bar from ffmpeg's `time=…` stderr ticks. Mirrors the
+ * `videoOutDuration` math in `buildFFmpegCommand`:
+ *
+ *   sum over visible video clips of (end-start)/speed,
+ *   minus (N-1) × td when xfade is active and N >= 2.
+ *
+ * Returns 0 when the timeline has no video — in that case progress will
+ * just show 0% and snap to 100% on render_complete (no good baseline to
+ * derive from for audio-only exports).
+ */
+export function estimateExportDuration(
+  timeline: Timeline,
+  settings: ProjectSettings = DEFAULT_PROJECT_SETTINGS
+): number {
+  let onTimelineSum = 0;
+  let clipCount = 0;
+  for (const track of timeline.tracks) {
+    if (track.type !== "video" || track.muted) continue;
+    for (const clip of track.clips) {
+      const speed = clip.speed ?? 1;
+      onTimelineSum += (clip.end - clip.start) / Math.max(0.0001, speed);
+      clipCount += 1;
+    }
+  }
+  if (clipCount === 0) return 0;
+  const useXfade = (settings.transitionType ?? "none") !== "none" && clipCount >= 2;
+  const td = settings.transitionDuration ?? 1.0;
+  const out = useXfade ? onTimelineSum - (clipCount - 1) * td : onTimelineSum;
+  return Math.max(0, out);
 }

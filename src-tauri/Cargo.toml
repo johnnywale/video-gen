@@ -29,6 +29,14 @@ rfd = "0.15"
 # Lightweight blocking HTTP client for outbound API calls (AI title generation,
 # TTS, music). Used inside spawn_blocking to keep the runtime async.
 ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+# Cross-platform system font enumeration. fontdb walks the OS font dirs
+# directly so we get on-disk paths (CoreText / DirectWrite return memory
+# handles which we can't pass to ffmpeg's `drawtext=fontfile=…`).
+fontdb = "0.21"
+# `ttf-parser` reads the font's cmap directly so we can flag CJK-capable
+# faces in the picker (so the default lands on something that renders
+# Chinese instead of tofu).
+ttf-parser = "0.25"
 
 [features]
 default = ["custom-protocol"]

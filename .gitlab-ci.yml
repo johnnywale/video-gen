@@ -1,0 +1,48 @@
+stages:
+  - build
+  - test
+
+.windows_job:
+  tags:
+    - saas-windows-medium-amd64
+  before_script:
+    - Set-Variable -Name "time" -Value (date -Format "%H:%m")
+    - echo ${time}
+    - echo "started by ${GITLAB_USER_NAME} / @${GITLAB_USER_LOGIN}"
+
+build:
+  extends:
+    - .windows_job
+  stage: build
+  script:
+    - choco install nodejs-lts -y --no-progress
+    - $env:Path = "C:\Program Files\nodejs;$env:Path"
+    - Invoke-WebRequest -Uri "https://win.rustup.rs/x86_64" -OutFile "rustup-init.exe"
+    - .\rustup-init.exe -y --default-toolchain stable --profile minimal --target x86_64-pc-windows-msvc
+    - $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"
+    - Invoke-WebRequest -Uri "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z" -OutFile "ffmpeg.7z"
+    - 7z x ffmpeg.7z -offmpeg-extract -y | Out-Null
+    - $ffmpegDir = (Get-ChildItem -Path "ffmpeg-extract" -Directory | Select-Object -First 1).FullName
+    - $env:FFMPEG_DIR = $ffmpegDir
+    - $env:Path = "$ffmpegDir\bin;$env:Path"
+    - npm ci
+    - New-Item -ItemType Directory -Force -Path "src-tauri\ffmpeg-dlls" | Out-Null
+    - Copy-Item -Path "$ffmpegDir\bin\*.dll" -Destination "src-tauri\ffmpeg-dlls\" -Force
+    - npm run tauri build -- --target x86_64-pc-windows-msvc
+  artifacts:
+    name: video-editor-windows-x64
+    paths:
+      - src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
+      - src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+    expire_in: 1 week
+    when: on_success
+
+test:
+  extends:
+    - .windows_job
+  stage: test
+  script:
+    - choco install nodejs-lts -y --no-progress
+    - $env:Path = "C:\Program Files\nodejs;$env:Path"
+    - npm ci
+    - npm run test

@@ -9,6 +9,7 @@ build/
 # Tauri
 src-tauri/target/
 src-tauri/gen/schemas/
+src-tauri/ffmpeg-dlls/
 
 # Logs
 logs/
