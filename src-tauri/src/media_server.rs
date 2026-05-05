@@ -82,13 +82,22 @@ async fn handle(mut stream: TcpStream) -> std::io::Result<()> {
     }
 
     // /Users/foo/file.mp4 — strip leading slash, drop query string, decode.
+    // On Windows the decoded path is already absolute (e.g. `C:\Users\...`)
+    // because `get_media_url` percent-encodes the whole path; re-prepending
+    // `/` there would yield `/C:\Users\...` which never opens. POSIX paths
+    // arrive without their leading `/` (we stripped it above), so we restore
+    // it for that case only.
     let no_query = raw_path.split('?').next().unwrap_or("");
     let path_no_slash = no_query.trim_start_matches('/');
     let decoded = match percent_decode(path_no_slash) {
         Some(s) => s,
         None => return write_status(&mut stream, 400, "Bad Request").await,
     };
-    let abs_path = PathBuf::from(format!("/{decoded}"));
+    let abs_path = if is_windows_absolute(&decoded) {
+        PathBuf::from(decoded)
+    } else {
+        PathBuf::from(format!("/{decoded}"))
+    };
 
     // Range parsing: only the simple `bytes=START-` and `bytes=START-END` forms.
     let mut range_header: Option<&str> = None;
@@ -222,6 +231,19 @@ fn percent_decode(s: &str) -> Option<String> {
     String::from_utf8(out).ok()
 }
 
+/// `C:\...` / `C:/...` (drive-letter absolute) or `\\server\share` (UNC).
+fn is_windows_absolute(s: &str) -> bool {
+    let bytes = s.as_bytes();
+    if bytes.len() >= 3
+        && bytes[0].is_ascii_alphabetic()
+        && bytes[1] == b':'
+        && (bytes[2] == b'\\' || bytes[2] == b'/')
+    {
+        return true;
+    }
+    s.starts_with("\\\\")
+}
+
 fn hex_nibble(c: u8) -> Option<u8> {
     match c {
         b'0'..=b'9' => Some(c - b'0'),
@@ -264,6 +286,16 @@ mod tests {
     use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
     // ── Unit tests for helpers ───────────────────────────────────────────
+
+    #[test]
+    fn windows_absolute_detection() {
+        assert!(is_windows_absolute(r"C:\Users\foo"));
+        assert!(is_windows_absolute("c:/Users/foo"));
+        assert!(is_windows_absolute(r"\\server\share\file"));
+        assert!(!is_windows_absolute("Users/foo/bar.mp4"));
+        assert!(!is_windows_absolute("C:foo")); // drive-relative, not absolute
+        assert!(!is_windows_absolute(""));
+    }
 
     #[test]
     fn parse_range_full() {

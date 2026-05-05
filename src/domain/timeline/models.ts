@@ -19,8 +19,16 @@ export type Clip = {
    * with end-start = 2s and speed = 0.5 occupies 4s on the timeline.
    */
   speed?: number;
-  /** Index into a predefined text-overlay style table (0-based). */
+  /** Legacy index into the built-in text-overlay style table (0-based).
+   *  Preserved for projects saved before `textStyleId` existed; new code
+   *  should set `textStyleId` instead. The renderer falls back to this
+   *  index (mapping to a built-in's ID) when `textStyleId` is absent. */
   textStyle?: number;
+  /** Stable ID of a TextStyle from the textStylesStore. Preferred over
+   *  `textStyle` because it's machine-portable — built-in IDs are fixed
+   *  in code, custom IDs round-trip via the project save. Unknown IDs
+   *  resolve back to the first built-in at render time. */
+  textStyleId?: string;
   /** Font family used to render `text` in the export. Resolved against
    *  the user's installed fonts (via fontsStore) at render time; falls
    *  back to the project default when absent or unknown. */

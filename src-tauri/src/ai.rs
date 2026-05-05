@@ -1,12 +1,27 @@
-//! AI integrations — caption generation via an OpenAI-compatible chat
-//! endpoint, and TTS via MiniMax `t2a_v2`. Keys/URLs are passed in from the
-//! frontend (read from the user's Settings panel) so this module stays
-//! stateless.
+//! AI integrations — captions, TTS, and music all go through one LiteLLM
+//! proxy. The proxy fans out to MiniMax / Anthropic / etc. and uses its own
+//! master key, so the app no longer collects per-provider credentials. The
+//! URL + key are baked in as constants instead of read from settings.
+//!
+//! Endpoints in use:
+//!   - `POST /v1/chat/completions`  → captions (OpenAI-compat chat).
+//!   - `POST /v1/audio/speech`      → TTS (OpenAI-compat audio.speech, with
+//!                                       MiniMax-specific tunables in
+//!                                       `extra_body`). Response is binary mp3.
+//!   - `POST /v1/music_generation`  → MiniMax music_generation pass-through
+//!                                       (still returns the same JSON shape).
 
 use base64::Engine;
 use serde::Serialize;
 use serde_json::{json, Value};
 use std::path::PathBuf;
+
+/// LiteLLM proxy URL. All AI calls route through here. Hard-coded because
+/// the project ships with a single proxy deployment; the URL is no longer
+/// per-user-configurable. The API key (master key) still comes from the
+/// user's settings — see `AppSettings.litellmApiKey`.
+pub const LITELLM_BASE_URL: &str =
+    "http://hedge-order-1443101935.ap-southeast-1.elb.amazonaws.com:4001";
 
 /// Structured error for TTS calls so the frontend can render a debug
 /// panel containing the exact request/response that failed. Used only
@@ -52,16 +67,12 @@ const JSON_OUTPUT_INSTRUCTION: &str =
 /// `video_maker.ai_generate_titles` function: asks for a JSON array of
 /// strings, falls back to defaults when the response is unusable.
 ///
-/// `base_url` should be the OpenAI-compat root (e.g. `http://localhost:4001`).
-/// The `/anthropic` suffix some proxies append is stripped automatically.
-///
 /// `prompt_template` is the user's custom template. `{topic}` and `{count}`
 /// are substituted; the JSON-output instruction is always appended to the
 /// final prompt to keep responses parseable.
 pub fn generate_captions(
     topic: &str,
     count: usize,
-    base_url: &str,
     api_key: &str,
     model: Option<&str>,
     prompt_template: Option<&str>,
@@ -70,11 +81,7 @@ pub fn generate_captions(
         return Ok(Vec::new());
     }
 
-    let mut base = base_url.trim_end_matches('/').to_string();
-    if base.ends_with("/anthropic") {
-        base.truncate(base.len() - "/anthropic".len());
-    }
-    let url = format!("{base}/v1/chat/completions");
+    let url = format!("{LITELLM_BASE_URL}/v1/chat/completions");
 
     let template = prompt_template
         .filter(|t| !t.trim().is_empty())
@@ -92,11 +99,14 @@ pub fn generate_captions(
         ]
     });
 
-    let mut req = ureq::post(&url).set("Content-Type", "application/json");
-    if !api_key.is_empty() {
-        req = req.set("Authorization", &format!("Bearer {api_key}"));
+    let mut req = ureq::post(&url)
+        .set("Content-Type", "application/json")
+        // Long timeout — chat completions on slower thinking models can
+        // take well over a minute; the proxy queues during burst load.
+        .timeout(std::time::Duration::from_secs(600));
+    if !api_key.trim().is_empty() {
+        req = req.set("Authorization", &format!("Bearer {}", api_key.trim()));
     }
-
     let resp = req
         .send_json(body)
         .map_err(|e| format!("HTTP error contacting {url}: {e}"))?;
@@ -143,7 +153,6 @@ pub fn generate_speech(
     text: &str,
     voice_id: &str,
     api_key: &str,
-    base_url: &str,
     dest_dir: &std::path::Path,
 ) -> Result<String, SpeechError> {
     let text = text.trim();
@@ -156,43 +165,35 @@ pub fn generate_speech(
     }
     let api_key = api_key.trim();
     if api_key.is_empty() {
-        return Err(SpeechError::pre_request("MiniMax API 密钥未设置（请在设置中填写）"));
+        return Err(SpeechError::pre_request("LiteLLM API 密钥未设置（请在设置中填写）"));
     }
-    let base = base_url.trim().trim_end_matches('/');
-    if base.is_empty() {
-        return Err(SpeechError::pre_request("MiniMax 服务地址为空（请在设置中填写）"));
-    }
-    let endpoint = format!("{base}/v1/t2a_v2");
+    let endpoint = format!("{LITELLM_BASE_URL}/v1/audio/speech");
     let fingerprint = key_fingerprint(api_key);
     eprintln!(
         "[ai::generate_speech] POST {endpoint}  key_fp={fingerprint}  voice={voice_id}  chars={}",
         text.chars().count()
     );
 
+    // OpenAI-compat /v1/audio/speech shape used by the LiteLLM proxy. Tunables
+    // that aren't part of the OpenAI schema (vol/pitch/sample_rate/etc.) ride
+    // along in `extra_body`; the proxy passes them straight to MiniMax. The
+    // proxy returns a binary mp3 (Content-Type: audio/mpeg) regardless of
+    // `output_format`, so no JSON parsing or hex/base64 decode here.
     let body = json!({
         "model": SPEECH_MODEL,
-        "text": text,
-        "stream": false,
-        "voice_setting": {
-            "voice_id": voice_id,
-            "speed": 1.0,
-            "vol": 1.0,
+        "input": text,
+        "voice": voice_id,
+        "speed": 1.0,
+        "response_format": "mp3",
+        "extra_body": {
+            "vol": 1,
             "pitch": 0,
-        },
-        "audio_setting": {
             "sample_rate": 32000,
             "bitrate": 128000,
-            "format": "mp3",
             "channel": 1,
+            "language_boost": "Chinese",
+            "output_format": "hex",
         },
-        // The reference curl includes `language_boost: "Chinese"` to nudge
-        // pronunciation for the curated Chinese voice IDs we ship. Keep it
-        // even for English text — the parameter is a hint, not a filter.
-        "language_boost": "Chinese",
-        // Force hex output so we always hit the hex decode path; without
-        // this MiniMax may return base64 (still handled by decode_audio_payload,
-        // but explicit beats implicit).
-        "output_format": "hex",
     });
     let request_body_pretty = serde_json::to_string_pretty(&body).unwrap_or_else(|_| body.to_string());
 
@@ -207,12 +208,16 @@ pub fn generate_speech(
     let send_result = ureq::post(&endpoint)
         .set("Content-Type", "application/json")
         .set("Authorization", &format!("Bearer {api_key}"))
-        .timeout(std::time::Duration::from_secs(120))
+        // 10 min — speech for long narration plus proxy queueing can run
+        // well past the previous 2 min cap on slow days.
+        .timeout(std::time::Duration::from_secs(600))
         .send_json(body);
 
     let resp = match send_result {
         Ok(r) => r,
         Err(ureq::Error::Status(code, resp)) => {
+            // Error path is JSON — surface the body so the debug modal can
+            // show the upstream message (rate-limit / auth / etc.).
             let body = resp.into_string().unwrap_or_else(|e| format!("(read body err: {e})"));
             return Err(mk_err(
                 format!("配音生成请求失败 (HTTP {code})"),
@@ -226,69 +231,34 @@ pub fn generate_speech(
     };
 
     let status_code = resp.status();
-    let raw_body = resp
-        .into_string()
-        .unwrap_or_else(|e| format!("(read body err: {e})"));
-
-    let json: Value = match serde_json::from_str(&raw_body) {
-        Ok(v) => v,
-        Err(e) => {
-            return Err(mk_err(
-                format!("响应不是 JSON: {e}"),
-                Some(status_code),
-                Some(raw_body),
-            ));
-        }
-    };
-
-    let mm_status = json
-        .pointer("/base_resp/status_code")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(-1);
-    if mm_status != 0 {
-        let msg = json
-            .pointer("/base_resp/status_msg")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
+    // Read the binary mp3 body. ureq's into_reader() streams; we collect into
+    // a Vec since the file is small (~tens of KB for one short narration).
+    let mut bytes: Vec<u8> = Vec::with_capacity(64 * 1024);
+    if let Err(e) = std::io::copy(&mut resp.into_reader(), &mut bytes) {
         return Err(mk_err(
-            format!("配音生成失败: {msg}"),
+            format!("读取配音字节失败: {e}"),
             Some(status_code),
-            Some(raw_body),
+            None,
         ));
     }
-
-    // Per MiniMax docs the audio bytes live at `data.audio`. Some proxies
-    // surface it at the top level — try both.
-    let audio_str = match json
-        .pointer("/data/audio")
-        .and_then(|v| v.as_str())
-        .or_else(|| json.pointer("/audio").and_then(|v| v.as_str()))
-    {
-        Some(s) => s,
-        None => {
-            return Err(mk_err(
-                "响应缺少 data.audio 字段".to_string(),
-                Some(status_code),
-                Some(raw_body),
-            ));
-        }
-    };
-
-    let bytes = match decode_audio_payload(audio_str) {
-        Some(b) => b,
-        None => {
-            return Err(mk_err(
-                "音频数据无法解码（hex 与 base64 均失败）".to_string(),
-                Some(status_code),
-                Some(raw_body),
-            ));
-        }
-    };
     if bytes.is_empty() {
         return Err(mk_err(
-            "解码到的音频为空".to_string(),
+            "服务端返回空响应".to_string(),
             Some(status_code),
-            Some(raw_body),
+            None,
+        ));
+    }
+    // The proxy occasionally returns a JSON error body with status 200 on
+    // upstream failures (LiteLLM bug surface). Detect by looking at the first
+    // byte: mp3 frames start with 0xFF or "ID3" / "RIFF"; JSON starts with
+    // `{` or `[`. If it's JSON, surface the body so the debug modal works.
+    let first = bytes.first().copied().unwrap_or(0);
+    if first == b'{' || first == b'[' {
+        let body_text = String::from_utf8(bytes).unwrap_or_else(|_| "(non-utf8 body)".to_string());
+        return Err(mk_err(
+            "服务端返回 JSON 而非音频".to_string(),
+            Some(status_code),
+            Some(body_text),
         ));
     }
 
@@ -315,27 +285,21 @@ pub fn generate_speech(
 /// client: `output_format: "url"`, downloads the resulting mp3, returns
 /// the saved file's local path.
 ///
-/// `base_url` should be the MiniMax host root, no trailing slash, e.g.
-/// `https://api.minimax.io` for international or `https://api.minimaxi.com`
-/// for the China region. Keys are not interchangeable between regions.
+/// Routes through the LiteLLM proxy's `/v1/music_generation` pass-through —
+/// the proxy forwards verbatim to MiniMax. Payload shape is unchanged.
 pub fn music_generate(
     prompt: &str,
     duration_seconds: Option<f32>,
     api_key: &str,
-    base_url: &str,
 ) -> Result<String, String> {
     if prompt.trim().is_empty() {
         return Err("音乐描述为空".to_string());
     }
     let api_key = api_key.trim();
     if api_key.is_empty() {
-        return Err("MiniMax API 密钥未设置（请在设置中填写）".to_string());
+        return Err("LiteLLM API 密钥未设置（请在设置中填写）".to_string());
     }
-    let base = base_url.trim().trim_end_matches('/');
-    if base.is_empty() {
-        return Err("MiniMax 服务地址为空（请在设置中填写）".to_string());
-    }
-    let endpoint = format!("{base}/v1/music_generation");
+    let endpoint = format!("{LITELLM_BASE_URL}/v1/music_generation");
     let fingerprint = key_fingerprint(api_key);
     eprintln!(
         "[ai::music_generate] POST {endpoint}  key_len={}  key_fp={fingerprint}  prompt_chars={}",
@@ -368,7 +332,10 @@ pub fn music_generate(
     let resp = ureq::post(&endpoint)
         .set("Content-Type", "application/json")
         .set("Authorization", &format!("Bearer {api_key}"))
-        .timeout(std::time::Duration::from_secs(300))
+        // Music generation is the slowest call we make — model + render +
+        // S3 upload routinely takes a few minutes. 10 min gives headroom
+        // for retry/queue spikes on the proxy.
+        .timeout(std::time::Duration::from_secs(600))
         .send_json(body)
         .map_err(|e| {
             // Surface the response body on HTTP errors — that's where MiniMax
@@ -417,7 +384,8 @@ pub fn music_generate(
 
     let audio_bytes = if let Some(url) = audio_url {
         let resp = ureq::get(url)
-            .timeout(std::time::Duration::from_secs(180))
+            // S3 / CDN download — generous cap covers slow links.
+            .timeout(std::time::Duration::from_secs(600))
             .call()
             .map_err(|e| format!("下载音乐失败: {e}"))?;
         let mut buf: Vec<u8> = Vec::with_capacity(2 * 1024 * 1024);
@@ -487,31 +455,30 @@ fn nibble(b: u8) -> Option<u8> {
     }
 }
 
-/// Diagnostic ping — sends a minimal POST to /v1/music_generation with
-/// `output_format: "url"` and a tiny prompt, returns the HTTP status +
-/// raw body so the user can see exactly what MiniMax replies. Does NOT
-/// download any audio. Useful when debugging auth/region issues.
-pub fn diagnose_minimax(api_key: &str, base_url: &str) -> Result<String, String> {
+/// Diagnostic ping — sends a tiny chat-completions request and returns
+/// the HTTP status + raw body so the user can see exactly what the proxy
+/// replies. Hits `/v1/chat/completions` (not music_generation) so the
+/// check is fast and free — music generation would queue for minutes and
+/// burn quota just to validate a key.
+pub fn diagnose_minimax(api_key: &str) -> Result<String, String> {
     let api_key = api_key.trim();
-    let base = base_url.trim().trim_end_matches('/');
-    if api_key.is_empty() || base.is_empty() {
-        return Err("API key 或 base url 为空".to_string());
+    if api_key.is_empty() {
+        return Err("API key 为空".to_string());
     }
-    let endpoint = format!("{base}/v1/music_generation");
+    let endpoint = format!("{LITELLM_BASE_URL}/v1/chat/completions");
 
     let body = json!({
-        "model": MUSIC_MODEL,
-        "prompt": "ping",
-        "output_format": "url",
-        "audio_setting": { "sample_rate": 44100, "bitrate": 256000, "format": "mp3" },
-        "is_instrumental": true,
-        "lyrics": "",
+        "model": "MiniMax-M2.7",
+        "max_tokens": 8,
+        "messages": [
+            { "role": "user", "content": "ping" }
+        ],
     });
 
     let result = ureq::post(&endpoint)
         .set("Content-Type", "application/json")
         .set("Authorization", &format!("Bearer {api_key}"))
-        .timeout(std::time::Duration::from_secs(20))
+        .timeout(std::time::Duration::from_secs(60))
         .send_json(body);
 
     let (status, body_text) = match result {

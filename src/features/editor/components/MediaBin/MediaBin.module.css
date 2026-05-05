@@ -156,6 +156,7 @@
 }
 
 .item {
+  position: relative;
   display: flex;
   gap: 8px;
   padding: 6px;
@@ -283,6 +284,34 @@
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: center;
+}
+
+.deleteBtn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.1s, background 0.1s;
+  z-index: 1;
+}
+.item:hover .deleteBtn,
+.gridItem:hover .deleteBtn {
+  opacity: 1;
+}
+.deleteBtn:hover {
+  background: var(--color-danger, #d33);
 }
 
 .comingSoon {

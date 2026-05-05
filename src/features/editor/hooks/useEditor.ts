@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useEditorStore } from "../store/editorStore";
 import { useFontsStore } from "../store/fontsStore";
+import { useTextStylesStore } from "../store/textStylesStore";
 import { renderProject } from "../services/renderService";
 import { onRenderProgress, onRenderComplete, onRenderError, onFileDrop } from "@/infrastructure/tauri/event";
 import { openFilePicker, probeMedia, getMediaUrl, openPath } from "@/infrastructure/tauri/commands";
@@ -114,12 +115,14 @@ export function useEditor() {
       const defaultPath = fontsState.defaultCjkFamily
         ? familyToPath[fontsState.defaultCjkFamily]
         : undefined;
+      const textStyles = useTextStylesStore.getState().styles;
       await renderProject(
         store.timeline,
         store.outputPath,
         store.projectSettings,
         store.mediaFiles,
-        { familyToPath, defaultPath }
+        { familyToPath, defaultPath },
+        textStyles
       );
     } catch (err) {
       setRenderState({ isRendering: false, progress: 0, error: String(err), lastOutputPath: null });

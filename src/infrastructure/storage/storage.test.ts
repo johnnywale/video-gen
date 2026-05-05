@@ -27,27 +27,39 @@ describe("settingsStorage", () => {
 
   it("save then load round-trips the values", () => {
     saveSettings({
-      anthropicBaseUrl: "https://api.example/v1",
-      anthropicApiKey: "sk-test",
-      minimaxApiKey: "mm-test",
-      minimaxBaseUrl: "https://api.minimaxi.com",
+      litellmApiKey: "sk-test",
       speechCacheDir: "/Users/x/cache",
     });
     expect(loadSettings()).toEqual({
-      anthropicBaseUrl: "https://api.example/v1",
-      anthropicApiKey: "sk-test",
-      minimaxApiKey: "mm-test",
-      minimaxBaseUrl: "https://api.minimaxi.com",
+      litellmApiKey: "sk-test",
       speechCacheDir: "/Users/x/cache",
     });
   });
 
   it("missing fields fall back to defaults (forwards-compat)", () => {
-    memStore.set("video-editor-settings", JSON.stringify({ anthropicBaseUrl: "https://x" }));
+    memStore.set("video-editor-settings", JSON.stringify({ litellmApiKey: "sk-only" }));
     const s = loadSettings();
-    expect(s.anthropicBaseUrl).toBe("https://x");
-    expect(s.anthropicApiKey).toBe(DEFAULT_SETTINGS.anthropicApiKey);
-    expect(s.minimaxApiKey).toBe(DEFAULT_SETTINGS.minimaxApiKey);
+    expect(s.litellmApiKey).toBe("sk-only");
+    expect(s.speechCacheDir).toBe(DEFAULT_SETTINGS.speechCacheDir);
+  });
+
+  it("migrates the legacy anthropicApiKey field into litellmApiKey", () => {
+    // Pre-rebrand projects stored the LiteLLM proxy key under
+    // `anthropicApiKey`. On load we lift it into the new field so users
+    // don't lose their key after upgrade.
+    memStore.set(
+      "video-editor-settings",
+      JSON.stringify({ anthropicApiKey: "sk-legacy-anthropic" })
+    );
+    expect(loadSettings().litellmApiKey).toBe("sk-legacy-anthropic");
+  });
+
+  it("falls back to legacy minimaxApiKey when no anthropicApiKey is present", () => {
+    memStore.set(
+      "video-editor-settings",
+      JSON.stringify({ minimaxApiKey: "sk-legacy-mm" })
+    );
+    expect(loadSettings().litellmApiKey).toBe("sk-legacy-mm");
   });
 
   it("malformed JSON returns defaults rather than throwing", () => {
@@ -56,7 +68,7 @@ describe("settingsStorage", () => {
   });
 
   it("clearSettings removes the key from storage", () => {
-    saveSettings({ ...DEFAULT_SETTINGS, anthropicApiKey: "sk-clear" });
+    saveSettings({ ...DEFAULT_SETTINGS, litellmApiKey: "sk-clear" });
     expect(memStore.has("video-editor-settings")).toBe(true);
     clearSettings();
     expect(memStore.has("video-editor-settings")).toBe(false);

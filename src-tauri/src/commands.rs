@@ -143,7 +143,7 @@ pub async fn save_file_picker(default_path: Option<String>, default_name: Option
 /// Open a native file picker dialog and return selected file paths.
 #[tauri::command]
 pub async fn open_file_picker(multiple: bool) -> Result<Vec<String>, String> {
-    let mut dialog = rfd::AsyncFileDialog::new()
+    let dialog = rfd::AsyncFileDialog::new()
         .set_title("Import Media")
         .add_filter("Media Files", &["mp4", "mov", "mkv", "avi", "webm", "mp3", "wav", "aac", "flac", "m4a"]);
 
@@ -243,45 +243,38 @@ pub async fn extract_waveform(
 }
 
 /// Diagnostic — POST a tiny request to the music_generation endpoint and
-/// return whatever MiniMax replies, status + raw body. Used by the
+/// return whatever the proxy replies, status + raw body. Used by the
 /// "Test connection" button in Settings.
 #[tauri::command]
-pub async fn ai_diagnose_minimax(
-    api_key: String,
-    base_url: String,
-) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || crate::ai::diagnose_minimax(&api_key, &base_url))
+pub async fn ai_diagnose_minimax(api_key: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || crate::ai::diagnose_minimax(&api_key))
         .await
         .map_err(|e| format!("task error: {e}"))?
 }
 
-/// Generate instrumental background music via MiniMax `music_generation`.
-/// Always called with is_instrumental=true so the result is vocal-free.
-/// `base_url` selects the region (api.minimax.io / api.minimaxi.com).
+/// Generate instrumental background music. Routes through the LiteLLM
+/// proxy's `/v1/music_generation` pass-through (always is_instrumental=true).
 /// Returns the saved mp3 file path.
 #[tauri::command]
 pub async fn ai_generate_music(
     prompt: String,
     duration_seconds: Option<f32>,
     api_key: String,
-    base_url: String,
 ) -> Result<String, String> {
     tokio::task::spawn_blocking(move || {
-        crate::ai::music_generate(&prompt, duration_seconds, &api_key, &base_url)
+        crate::ai::music_generate(&prompt, duration_seconds, &api_key)
     })
     .await
     .map_err(|e| format!("task error: {e}"))?
 }
 
-/// Generate captions via an OpenAI-compat chat-completions endpoint.
-/// Credentials come from the user's Settings panel. If `prompt_template`
-/// is provided, it's used (with `{topic}` and `{count}` substituted)
-/// instead of the built-in default.
+/// Generate captions via the LiteLLM proxy's chat-completions endpoint.
+/// If `prompt_template` is provided, it's used (with `{topic}` and `{count}`
+/// substituted) instead of the built-in default.
 #[tauri::command]
 pub async fn ai_generate_captions(
     topic: String,
     count: u32,
-    base_url: String,
     api_key: String,
     model: Option<String>,
     prompt_template: Option<String>,
@@ -290,7 +283,6 @@ pub async fn ai_generate_captions(
         crate::ai::generate_captions(
             &topic,
             count as usize,
-            &base_url,
             &api_key,
             model.as_deref(),
             prompt_template.as_deref(),
@@ -320,7 +312,6 @@ pub async fn ai_generate_speech(
     text: String,
     voice_id: String,
     api_key: String,
-    base_url: String,
     cache_dir: Option<String>,
 ) -> Result<String, crate::ai::SpeechError> {
     let dest_dir = match resolve_speech_cache_dir(&app, cache_dir.as_deref()) {
@@ -336,7 +327,7 @@ pub async fn ai_generate_speech(
         }
     };
     match tokio::task::spawn_blocking(move || {
-        crate::ai::generate_speech(&text, &voice_id, &api_key, &base_url, &dest_dir)
+        crate::ai::generate_speech(&text, &voice_id, &api_key, &dest_dir)
     })
     .await
     {

@@ -1,9 +1,11 @@
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { formatTimecode } from "@/shared/utils/timecode";
 import { useEditorStore } from "../../store/editorStore";
+import { useTextStylesStore } from "../../store/textStylesStore";
 import { useAudioTrackPlayback } from "../../hooks/useAudioTrackPlayback";
 import { clipDuration } from "@/domain/timeline/clip";
 import { Timeline, Clip } from "@/domain/timeline/models";
+import { resolveClipStyle } from "@/domain/captions/textStyle";
 import { CaptionOverlay } from "./CaptionOverlay";
 import styles from "./Preview.module.css";
 
@@ -84,11 +86,13 @@ export function VideoPlayer({
   const timeline = useEditorStore((s) => s.timeline);
   const transitionType = useEditorStore((s) => s.projectSettings.transitionType);
   const transitionDuration = useEditorStore((s) => s.projectSettings.transitionDuration);
+  const textStyles = useTextStylesStore((s) => s.styles);
   const activeCaption = useMemo(() => {
     const active = findActiveVideo(timeline, playheadPosition);
     if (!active || !active.clip.text) return null;
-    return { text: active.clip.text, style: active.clip.textStyle ?? 0 };
-  }, [timeline, playheadPosition]);
+    const style = resolveClipStyle(textStyles, active.clip.textStyleId, active.clip.textStyle);
+    return { text: active.clip.text, style };
+  }, [timeline, playheadPosition, textStyles]);
 
   // Cross-fade preview canvas: when a clip transition fires we snapshot
   // the outgoing frame onto this canvas, then animate its opacity from 1

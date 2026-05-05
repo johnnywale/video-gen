@@ -13,8 +13,12 @@ export interface Stage {
   text?: string;
   /** Playback speed multiplier. 1 = normal, 0.5 = 2× slow. Default 1. */
   speed?: number;
-  /** Index into the export-time text overlay style table. Default 0. */
+  /** Legacy index into the built-in text overlay style table. Kept for
+   *  back-compat with old projects; new code sets `textStyleId`. */
   textStyle?: number;
+  /** ID of a TextStyle from the textStylesStore. Resolved at render and
+   *  preview time. */
+  textStyleId?: string;
   /** Font family for caption rendering. When absent, the export uses the
    *  project's default CJK font (picked from fontsStore). */
   fontFamily?: string;
@@ -107,7 +111,7 @@ export function rerollStage(
 export function updateStage(
   plan: StagePlan,
   stageId: string,
-  patch: Partial<Pick<Stage, "sourceTime" | "length" | "thumbnail" | "text" | "speed" | "textStyle" | "fontFamily">>
+  patch: Partial<Pick<Stage, "sourceTime" | "length" | "thumbnail" | "text" | "speed" | "textStyle" | "textStyleId" | "fontFamily">>
 ): StagePlan {
   return {
     ...plan,
@@ -155,6 +159,7 @@ export function planToClips(
       ...(s.text ? { text: s.text } : {}),
       ...(s.speed !== undefined && s.speed !== 1 ? { speed: s.speed } : {}),
       ...(s.textStyle !== undefined ? { textStyle: s.textStyle } : {}),
+      ...(s.textStyleId ? { textStyleId: s.textStyleId } : {}),
       ...(s.fontFamily ? { fontFamily: s.fontFamily } : {}),
     });
     cursor += s.length;

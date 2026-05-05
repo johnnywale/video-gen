@@ -4,6 +4,7 @@ import { useEditorStore } from "../../store/editorStore";
 import { SidebarTabs, type TabId } from "./SidebarTabs";
 import { AIAudioModal } from "../AIAudio/AIAudioModal";
 import { TransitionsLibrary } from "../Transitions/TransitionsLibrary";
+import { TextStylesPanel } from "../TextStyles/TextStylesPanel";
 import styles from "./MediaBin.module.css";
 
 interface Props {
@@ -31,6 +32,14 @@ export function MediaBin({ mediaFiles, onAddToTimeline, onImport, style }: Props
   const setDraggingMediaId = useEditorStore((s) => s.setDraggingMediaId);
   const selectedAudioId = useEditorStore((s) => s.selectedAudioMediaId);
   const selectAudioMedia = useEditorStore((s) => s.selectAudioMedia);
+  const removeMediaFile = useEditorStore((s) => s.removeMediaFile);
+
+  const handleRemove = (file: MediaFile, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (window.confirm(`从素材库移除 "${file.name}"？时间线上已添加的片段不会被删除。`)) {
+      removeMediaFile(file.id);
+    }
+  };
 
   // Auto-switch the active tab to match the most recently added file's type.
   // Without this, importing an mp3 while on the Media (video) tab would make
@@ -161,6 +170,16 @@ export function MediaBin({ mediaFiles, onAddToTimeline, onImport, style }: Props
                         {file.width && file.height ? ` \u00B7 ${file.width}x${file.height}` : ""}
                       </span>
                     </div>
+                    <button
+                      className={styles.deleteBtn}
+                      onClick={(e) => handleRemove(file, e)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onDragStart={(e) => e.preventDefault()}
+                      aria-label="\u79FB\u9664"
+                      title="\u4ECE\u7D20\u6750\u5E93\u79FB\u9664"
+                    >
+                      &times;
+                    </button>
                   </div>
                 ))
               ) : (
@@ -185,6 +204,16 @@ export function MediaBin({ mediaFiles, onAddToTimeline, onImport, style }: Props
                         <div className={styles.audioThumb}>&#9835;</div>
                       )}
                       <span className={styles.gridDuration}>{formatDuration(file.duration)}</span>
+                      <button
+                        className={styles.deleteBtn}
+                        onClick={(e) => handleRemove(file, e)}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onDragStart={(e) => e.preventDefault()}
+                        aria-label="移除"
+                        title="从素材库移除"
+                      >
+                        &times;
+                      </button>
                     </div>
                     <span className={styles.gridName}>{file.name}</span>
                   </div>
@@ -194,6 +223,8 @@ export function MediaBin({ mediaFiles, onAddToTimeline, onImport, style }: Props
           </>
         ) : activeTab === "transitions" ? (
           <TransitionsLibrary />
+        ) : activeTab === "text" ? (
+          <TextStylesPanel />
         ) : (
           <div className={styles.comingSoon}>
             <span className={styles.comingSoonLabel}>{activeTab}</span>

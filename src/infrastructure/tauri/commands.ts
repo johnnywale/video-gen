@@ -72,30 +72,29 @@ export function extractFramesAtTimes(
   return invoke("extract_frames_at_times", { filePath, times, width, height });
 }
 
-/** Call the OpenAI-compat chat completions endpoint to generate `count`
- *  short captions for the topic. Credentials come from the Settings panel.
+/** Generate `count` short captions for the topic via the LiteLLM proxy's
+ *  chat-completions endpoint (proxy URL is hard-coded in the backend).
  *  `promptTemplate` overrides the default prompt (with {topic} / {count}
  *  substitution). When omitted, the backend's default template is used. */
 export function aiGenerateCaptions(
   topic: string,
   count: number,
-  baseUrl: string,
   apiKey: string,
   model?: string,
   promptTemplate?: string
 ): Promise<string[]> {
-  return invoke("ai_generate_captions", { topic, count, baseUrl, apiKey, model, promptTemplate });
+  return invoke("ai_generate_captions", { topic, count, apiKey, model, promptTemplate });
 }
 
-/** Generate instrumental background music via MiniMax music_generation.
- *  Always is_instrumental=true. baseUrl selects region. Returns mp3 path. */
+/** Generate instrumental background music via the LiteLLM proxy's
+ *  /v1/music_generation pass-through. Always is_instrumental=true.
+ *  Returns the saved mp3 path. */
 export function aiGenerateMusic(
   prompt: string,
   apiKey: string,
-  baseUrl: string,
   durationSeconds?: number
 ): Promise<string> {
-  return invoke("ai_generate_music", { prompt, apiKey, baseUrl, durationSeconds });
+  return invoke("ai_generate_music", { prompt, apiKey, durationSeconds });
 }
 
 /** Structured failure from `ai_generate_speech`. The promise rejects with
@@ -119,9 +118,10 @@ export function isSpeechError(e: unknown): e is SpeechError {
   );
 }
 
-/** Generate TTS audio for a single line via MiniMax t2a_v2. Returns the
- *  saved mp3 file path. Rejects with `SpeechError` (request/response
- *  bodies attached). Caller should cache by (text, voiceId).
+/** Generate TTS audio for a single line via the LiteLLM proxy's
+ *  /v1/audio/speech endpoint (OpenAI-compat). Returns the saved mp3 file
+ *  path. Rejects with `SpeechError` (request/response bodies attached).
+ *  Caller should cache by (text, voiceId).
  *
  *  `cacheDir` overrides where the backend writes the mp3. When empty /
  *  undefined the backend falls back to its default app-local-data dir. */
@@ -129,10 +129,9 @@ export function aiGenerateSpeech(
   text: string,
   voiceId: string,
   apiKey: string,
-  baseUrl: string,
   cacheDir?: string
 ): Promise<string> {
-  return invoke("ai_generate_speech", { text, voiceId, apiKey, baseUrl, cacheDir });
+  return invoke("ai_generate_speech", { text, voiceId, apiKey, cacheDir });
 }
 
 /** Resolve the default speech-cache directory the backend would use when
@@ -141,10 +140,10 @@ export function defaultSpeechCacheDir(): Promise<string> {
   return invoke("default_speech_cache_dir");
 }
 
-/** Diagnostic — sends a minimal request to MiniMax with the configured
- *  key + base URL, returns raw HTTP status + response body for debugging. */
-export function aiDiagnoseMiniMax(apiKey: string, baseUrl: string): Promise<string> {
-  return invoke("ai_diagnose_minimax", { apiKey, baseUrl });
+/** Diagnostic — sends a minimal request to the LiteLLM proxy with the
+ *  configured key, returns raw HTTP status + response body for debugging. */
+export function aiDiagnoseMiniMax(apiKey: string): Promise<string> {
+  return invoke("ai_diagnose_minimax", { apiKey });
 }
 
 /** Extract waveform peaks via backend ffmpeg. Returns float array 0.0-1.0. */

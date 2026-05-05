@@ -6,6 +6,7 @@ import { useSettingsStore } from "@/features/editor/store/settingsStore";
 import { useTopicsStore } from "@/features/editor/store/topicsStore";
 import { useCaptionsStore } from "@/features/editor/store/captionsStore";
 import { useFontsStore } from "@/features/editor/store/fontsStore";
+import { useTextStylesStore } from "@/features/editor/store/textStylesStore";
 import { useUIStore } from "@/features/editor/store/uiStore";
 import { DEFAULT_PROJECT_SETTINGS } from "@/domain/timeline/models";
 import { getMediaUrl } from "@/infrastructure/tauri/commands";
@@ -29,6 +30,7 @@ export default function App() {
     useSettingsStore.getState().hydrate();
     useTopicsStore.getState().hydrate();
     useCaptionsStore.getState().hydrate();
+    useTextStylesStore.getState().hydrate();
     useUIStore.getState().hydrate();
     // Fonts hydrate is async (touches the filesystem) but we don't need
     // to await it — the picker degrades gracefully to "(default)" while

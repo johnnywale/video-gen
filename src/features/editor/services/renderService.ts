@@ -1,6 +1,7 @@
 import { Timeline, ProjectSettings, MediaFile } from "@/domain/timeline/models";
 import { buildFFmpegCommand, FontResolution } from "@/domain/renderer/ffmpegGraph";
 import { executeFFmpeg } from "@/infrastructure/ffmpeg/ffmpegService";
+import { TextStyle } from "@/domain/captions/textStyle";
 
 /**
  * Rewrite media-server URLs back to absolute file paths so ffmpeg reads
@@ -19,18 +20,32 @@ import { executeFFmpeg } from "@/infrastructure/ffmpeg/ffmpegService";
  * non-URL strings).
  */
 const LOCAL_URL_RE = /^https?:\/\/127\.0\.0\.1:\d+(?=\/)/;
+// `/C:\…` or `/C:/…` after the URL prefix is dropped — the leading slash
+// is a URL-path artifact, the real path is the Windows drive form. macOS /
+// Linux paths legitimately start with `/`, so only strip when a drive
+// letter follows. UNC paths arrive as `/\\server\share\…` from the URL
+// layer; drop the URL `/` there too so ffmpeg sees `\\server\share\…`.
+const WINDOWS_DRIVE_AFTER_SLASH_RE = /^\/([A-Za-z]):[\\/]/;
 
 export function localiseMediaServerUrls(args: string[]): string[] {
   return args.map((a) => {
     if (!LOCAL_URL_RE.test(a)) return a;
     const stripped = a.replace(LOCAL_URL_RE, "");
+    let decoded: string;
     try {
-      return decodeURIComponent(stripped);
+      decoded = decodeURIComponent(stripped);
     } catch {
       // Malformed encoding — fall back to the raw stripped form rather
       // than crash the whole render.
-      return stripped;
+      decoded = stripped;
     }
+    if (WINDOWS_DRIVE_AFTER_SLASH_RE.test(decoded)) {
+      return decoded.slice(1);
+    }
+    if (decoded.startsWith("/\\\\")) {
+      return decoded.slice(1);
+    }
+    return decoded;
   });
 }
 
@@ -39,9 +54,10 @@ export async function renderProject(
   outputPath: string,
   settings?: ProjectSettings,
   mediaFiles: MediaFile[] = [],
-  fonts: FontResolution = {}
+  fonts: FontResolution = {},
+  textStyles?: readonly TextStyle[]
 ): Promise<void> {
-  const raw = buildFFmpegCommand(timeline, outputPath, settings, mediaFiles, fonts);
+  const raw = buildFFmpegCommand(timeline, outputPath, settings, mediaFiles, fonts, textStyles);
   const command = localiseMediaServerUrls(raw);
   console.log("[renderProject] transition:", settings?.transitionType ?? "none",
     settings?.transitionType !== "none" ? `dur=${settings?.transitionDuration ?? 1}` : "");

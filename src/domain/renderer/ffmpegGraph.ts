@@ -1,14 +1,5 @@
 import { Timeline, ProjectSettings, DEFAULT_PROJECT_SETTINGS, MediaFile } from "../timeline/models";
-
-/**
- * Caption colours per `clip.textStyle` index. Mirrors the labels shown in
- * AutoStagePanel.tsx:
- *   0 — 金色, 1 — 白色, 2 — 青色, 3 — 白色, 4 — 红色（顶部）
- * Animation hints (typewriter / slide-in) referenced in the labels are
- * intentionally not implemented yet — colour + position is the minimum
- * for "captions appear in the export".
- */
-const CAPTION_COLORS = ["#FFD700", "#FFFFFF", "#00FFFF", "#FFFFFF", "#FF4040"];
+import { TextStyle, BUILTIN_TEXT_STYLES, resolveClipStyle } from "../captions/textStyle";
 
 /** Default fontfile. macOS ships PingFang as the system CJK font; if the
  *  user's machine is Linux/Windows they'll see latin-only fallback unless
@@ -25,12 +16,72 @@ function escapeDrawTextLiteral(s: string): string {
     .replace(/%/g, "\\%");
 }
 
-/** Build the `drawtext=...` segment for one clip's caption, or empty
+/** Escape a Windows fontfile path (or any path containing `:`/`\`) for
+ *  the right-hand side of a `key=value` pair inside an ffmpeg filter.
+ *
+ *  ffmpeg parses filter descriptions in two passes — the filtergraph
+ *  parser strips one level of `\` escaping, then each filter parses its
+ *  own option list (split on `:`). A single `\:` only survives one pass,
+ *  so the option parser sees a bare `:` and splits the value mid-path
+ *  ("Error parsing filter description around …"). We need two
+ *  backslashes so one survives each level — this matches the
+ *  `C\\:/Windows/Fonts/Verdana.ttf` form the FFmpeg wiki recommends for
+ *  drawtext on Windows.
+ *
+ *  We also flip backslashes to forward slashes; both work for file open
+ *  on Windows and the forward-slash form avoids extra escaping headaches
+ *  inside the filtergraph (`\` is the escape char at the filtergraph
+ *  level too). POSIX paths (no colon, no backslash) pass through. */
+function escapeFilterPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/:/g, "\\\\:");
+}
+
+/** Animation timing knobs — kept short so the caption is fully readable
+ *  well before short stages end. ffmpeg's `t` in drawtext expressions
+ *  resets at the start of each clip after `setpts=PTS-STARTPTS`. */
+const ENTER_SLIDE_DUR = 0.5;
+const ENTER_FADE_DUR = 0.4;
+const TYPEWRITER_CHAR_DUR = 0.08;  // ~12 chars/sec, brisk but readable
+
+/** ffmpeg's filtergraph parser splits filter chains on `,` and option
+ *  lists on `:` — both appear inside our drawtext expressions like
+ *  `if(lt(t,0.5),...)` and `between(t,X,Y)`. Escape them at the filter
+ *  level so the expression survives parsing intact. Spaces aren't
+ *  meaningful inside expressions; we keep them out so the escape pass
+ *  is simple. */
+function escapeExpr(expr: string): string {
+  return expr.replace(/,/g, "\\,").replace(/:/g, "\\:");
+}
+
+/** Y position expression for a static (no-animation) caption. */
+function staticY(position: TextStyle["position"], margin: number): string {
+  if (position === "top") return `${margin}`;
+  if (position === "center") return `(h-text_h)/2`;
+  return `h-text_h-${margin}`;
+}
+
+/** Build a single drawtext filter from key=value pairs. Caller is
+ *  responsible for already escaping any expression values. */
+function drawtext(opts: Record<string, string | number>): string {
+  const parts: string[] = [];
+  for (const [k, v] of Object.entries(opts)) {
+    parts.push(`${k}=${v}`);
+  }
+  return `drawtext=${parts.join(":")}`;
+}
+
+/** Build the `drawtext=...` segment(s) for one clip's caption, or empty
  *  string if the clip has no text. Returns the bare filter (no leading
- *  comma) so the caller can decide whether to chain it. */
+ *  comma); the typewriter effect emits multiple comma-joined drawtext
+ *  filters so the caller can still concatenate with a single `,`.
+ *
+ *  Built-in style IDs map to their label's animation — slide-up, fade-in,
+ *  slide-from-left, typewriter. Custom styles (or unknown IDs) render
+ *  static. ffmpeg's `t` is the per-clip local time after `setpts`, so
+ *  every stage's caption animates in at clip start. */
 export function buildCaptionFilter(
   text: string | undefined,
-  styleIdx: number | undefined,
+  style: TextStyle | undefined,
   // _width reserved for future text-wrapping logic; positioning currently
   // only needs height (vertical margin + fontsize derivation).
   _width: number,
@@ -41,25 +92,125 @@ export function buildCaptionFilter(
   // captions don't end up as visible escape sequences in the output.
   const cleaned = (text ?? "").replace(/[\r\n]+/g, " ").trim();
   if (!cleaned) return "";
-  const escaped = escapeDrawTextLiteral(cleaned);
-  const idx = styleIdx ?? 0;
-  const color = CAPTION_COLORS[idx] ?? "#FFFFFF";
-  // Style 4 (红色) sits near the top of the frame; everything else
-  // bottom-aligned at ~10% from the edge.
+  const resolved = style ?? BUILTIN_TEXT_STYLES[0];
   const margin = Math.round(height * 0.08);
-  const yExpr = idx === 4 ? `${margin}` : `h-text_h-${margin}`;
   // Roughly 60 px on 1080p, scaling with output height.
   const fontSize = Math.max(20, Math.round(height / 18));
-  return [
-    `drawtext=fontfile=${fontFile}`,
-    `text='${escaped}'`,
-    `fontsize=${fontSize}`,
-    `fontcolor=${color}`,
-    `x=(w-text_w)/2`,
-    `y=${yExpr}`,
-    `box=1:boxcolor=black@0.45:boxborderw=12`,
-    `shadowcolor=black:shadowx=2:shadowy=2`,
-  ].join(":");
+  const fontfile = escapeFilterPath(fontFile);
+
+  // Typewriter is the only effect that needs multiple drawtext filters
+  // (one per character, time-gated) — branch out to its own builder.
+  if (resolved.id === "builtin-white-typewriter") {
+    return buildTypewriter(cleaned, resolved, fontfile, fontSize, margin);
+  }
+
+  // Common base options — animations override `x` / `y` / `alpha`.
+  const base: Record<string, string | number> = {
+    fontfile,
+    text: `'${escapeDrawTextLiteral(cleaned)}'`,
+    fontsize: fontSize,
+    fontcolor: resolved.color,
+    "x": "(w-text_w)/2",
+    "y": staticY(resolved.position, margin),
+    "box": "1",
+    boxcolor: "black@0.45",
+    boxborderw: 12,
+    shadowcolor: "black",
+    shadowx: 2,
+    shadowy: 2,
+  };
+
+  switch (resolved.id) {
+    case "builtin-gold-bottom": {
+      // Slide in from below the frame to the final bottom position over
+      // ENTER_SLIDE_DUR seconds.
+      const dur = ENTER_SLIDE_DUR;
+      base.y = `'${escapeExpr(
+        `if(lt(t,${dur}),h-(text_h+${margin})*t/${dur},h-text_h-${margin})`
+      )}'`;
+      break;
+    }
+    case "builtin-cyan-glow": {
+      // Centred, fade-in alpha. The "glow" is approximated by a
+      // semi-transparent same-colour border; ffmpeg drawtext doesn't have
+      // a real soft halo, but a 4-px coloured outline reads as a glow on
+      // top of the dark `box`.
+      const dur = ENTER_FADE_DUR;
+      base.alpha = `'${escapeExpr(`if(lt(t,${dur}),t/${dur},1)`)}'`;
+      base.borderw = 4;
+      base.bordercolor = `${resolved.color}@0.55`;
+      break;
+    }
+    case "builtin-white-slidein": {
+      // Slide in from the left edge to centred.
+      const dur = ENTER_SLIDE_DUR;
+      base.x = `'${escapeExpr(
+        `if(lt(t,${dur}),-text_w+(w/2+text_w/2)*t/${dur},(w-text_w)/2)`
+      )}'`;
+      break;
+    }
+    case "builtin-red-top": {
+      // Top-positioned (already via staticY), fade-in alpha.
+      const dur = ENTER_FADE_DUR;
+      base.alpha = `'${escapeExpr(`if(lt(t,${dur}),t/${dur},1)`)}'`;
+      break;
+    }
+    default:
+      // Custom style or unknown built-in → static, no animation.
+      break;
+  }
+
+  return drawtext(base);
+}
+
+/** Typewriter: emit one drawtext filter per progressive substring,
+ *  enabled within a per-character time slice. The Nth filter shows
+ *  text[0..N+1] from `N*charDur` to either the next slice or +∞.
+ *
+ *  Uses Array.from so a stray BMP-non-character (like an emoji) counts
+ *  as one grapheme rather than two UTF-16 units. The number of drawtext
+ *  filters scales with caption length — Chinese narration tops out
+ *  around 12-15 chars per stage which is well within ffmpeg's filter
+ *  graph budget. */
+function buildTypewriter(
+  text: string,
+  style: TextStyle,
+  fontfile: string,
+  fontSize: number,
+  margin: number
+): string {
+  const chars = Array.from(text);
+  const baseY = staticY(style.position, margin);
+  const filters: string[] = [];
+  for (let i = 0; i < chars.length; i++) {
+    const sub = chars.slice(0, i + 1).join("");
+    const start = (i * TYPEWRITER_CHAR_DUR).toFixed(3);
+    // The last segment stays visible to the end of the clip (`gte(t,start)`
+    // is open-ended); intermediate segments end where the next begins so
+    // earlier substrings hide as the next character appears.
+    const enableExpr =
+      i === chars.length - 1
+        ? `gte(t,${start})`
+        : `between(t,${start},${((i + 1) * TYPEWRITER_CHAR_DUR).toFixed(3)})`;
+    filters.push(
+      drawtext({
+        fontfile,
+        text: `'${escapeDrawTextLiteral(sub)}'`,
+        fontsize: fontSize,
+        fontcolor: style.color,
+        x: "(w-text_w)/2",
+        y: baseY,
+        box: "1",
+        boxcolor: "black@0.55",
+        boxborderw: 12,
+        shadowcolor: "black",
+        shadowx: 2,
+        shadowy: 2,
+        enable: `'${escapeExpr(enableExpr)}'`,
+      })
+    );
+  }
+  return filters.join(",");
 }
 
 /**
@@ -112,7 +263,8 @@ export function buildFFmpegCommand(
   outputPath: string,
   settings: ProjectSettings = DEFAULT_PROJECT_SETTINGS,
   mediaFiles: MediaFile[] = [],
-  fonts: FontResolution = {}
+  fonts: FontResolution = {},
+  textStyles: readonly TextStyle[] = BUILTIN_TEXT_STYLES
 ): string[] {
   const { width, height, fps, codec, crf, preset, audioBitrate } = settings;
   const transitionType = settings.transitionType ?? "none";
@@ -158,7 +310,8 @@ export function buildFFmpegCommand(
         (clip.fontFamily && fonts.familyToPath?.[clip.fontFamily]) ||
         fonts.defaultPath ||
         DEFAULT_CAPTION_FONT;
-      const captionFilter = buildCaptionFilter(clip.text, clip.textStyle, width, height, fontPath);
+      const resolvedStyle = resolveClipStyle(textStyles, clip.textStyleId, clip.textStyle);
+      const captionFilter = buildCaptionFilter(clip.text, resolvedStyle, width, height, fontPath);
       const captionChain = captionFilter ? `,${captionFilter}` : "";
       filterParts.push(
         `[${inputIndex}:v]${setptsExpr},` +

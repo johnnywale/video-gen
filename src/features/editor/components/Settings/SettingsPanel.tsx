@@ -12,8 +12,7 @@ export function SettingsPanel({ onClose }: Props) {
   const setSettings = useSettingsStore((s) => s.setSettings);
   const resetSettings = useSettingsStore((s) => s.resetSettings);
 
-  const [showAnthropicKey, setShowAnthropicKey] = useState(false);
-  const [showMinimaxKey, setShowMinimaxKey] = useState(false);
+  const [showKey, setShowKey] = useState(false);
   const [diagBusy, setDiagBusy] = useState(false);
   const [diagResult, setDiagResult] = useState<string | null>(null);
   // The backend's default cache dir, surfaced as a placeholder so the
@@ -32,7 +31,7 @@ export function SettingsPanel({ onClose }: Props) {
     setDiagBusy(true);
     setDiagResult(null);
     try {
-      const out = await aiDiagnoseMiniMax(settings.minimaxApiKey, settings.minimaxBaseUrl);
+      const out = await aiDiagnoseMiniMax(settings.litellmApiKey);
       setDiagResult(out);
     } catch (e) {
       setDiagResult(String(e));
@@ -59,65 +58,22 @@ export function SettingsPanel({ onClose }: Props) {
           </div>
 
           <div className={styles.section}>
-            <span className={styles.sectionTitle}>Anthropic / OpenAI 兼容接口</span>
-            <span className={styles.help}>
-              用于 AI 文字生成。可指向任意 OpenAI 兼容的 endpoint，默认连接 <code>localhost:4001</code>。
-            </span>
+            <span className={styles.sectionTitle}>API 密钥</span>
             <div className={styles.field}>
-              <label>API 地址</label>
               <input
-                type="text"
-                value={settings.anthropicBaseUrl}
-                placeholder="http://localhost:4001"
-                onChange={(e) => setSettings({ anthropicBaseUrl: e.target.value })}
-              />
-            </div>
-            <div className={styles.field}>
-              <label>API 密钥</label>
-              <input
-                type={showAnthropicKey ? "text" : "password"}
-                value={settings.anthropicApiKey}
-                placeholder="sk-... 或代理令牌"
-                onChange={(e) => setSettings({ anthropicApiKey: e.target.value })}
-                onFocus={() => setShowAnthropicKey(true)}
-                onBlur={() => setShowAnthropicKey(false)}
-              />
-            </div>
-          </div>
-
-          <div className={styles.section}>
-            <span className={styles.sectionTitle}>MiniMax</span>
-            <span className={styles.help}>
-              用于 AI 背景音乐生成（无人声）。请在 MiniMax 控制台获取密钥。
-              海外账号请使用 <code>https://api.minimax.io</code>，国内账号（海螺）请使用 <code>https://api.minimaxi.com</code>。两者的密钥不能互通。
-            </span>
-            <div className={styles.field}>
-              <label>服务地址（区域）</label>
-              <select
-                value={settings.minimaxBaseUrl}
-                onChange={(e) => setSettings({ minimaxBaseUrl: e.target.value })}
-                style={{ background: "var(--color-surface)", color: "inherit", border: "1px solid var(--color-border)", borderRadius: 4, padding: "6px 8px", fontSize: 12, fontFamily: "inherit" }}
-              >
-                <option value="https://api.minimax.io">https://api.minimax.io（海外）</option>
-                <option value="https://api.minimaxi.com">https://api.minimaxi.com（国内 / 海螺）</option>
-              </select>
-            </div>
-            <div className={styles.field}>
-              <label>API 密钥</label>
-              <input
-                type={showMinimaxKey ? "text" : "password"}
-                value={settings.minimaxApiKey}
-                placeholder="MiniMax API 密钥（粘贴时请确认无前后空格）"
-                onChange={(e) => setSettings({ minimaxApiKey: e.target.value })}
-                onFocus={() => setShowMinimaxKey(true)}
-                onBlur={() => setShowMinimaxKey(false)}
+                type={showKey ? "text" : "password"}
+                value={settings.litellmApiKey}
+                placeholder="sk-..."
+                onChange={(e) => setSettings({ litellmApiKey: e.target.value })}
+                onFocus={() => setShowKey(true)}
+                onBlur={() => setShowKey(false)}
               />
             </div>
             <div className={styles.field}>
               <button
                 className={styles.secondaryBtn}
                 onClick={handleTestConnection}
-                disabled={diagBusy || !settings.minimaxApiKey.trim()}
+                disabled={diagBusy || !settings.litellmApiKey.trim()}
                 style={{ alignSelf: "flex-start" }}
                 type="button"
               >
@@ -143,6 +99,7 @@ export function SettingsPanel({ onClose }: Props) {
               )}
             </div>
           </div>
+
           <div className={styles.section}>
             <span className={styles.sectionTitle}>配音缓存</span>
             <span className={styles.help}>

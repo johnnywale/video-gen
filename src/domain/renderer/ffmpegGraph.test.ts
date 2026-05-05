@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { buildFFmpegCommand, ensureCompatibleContainer, buildCaptionFilter, estimateExportDuration } from "./ffmpegGraph";
 import { Timeline, Track, Clip, ProjectSettings } from "../timeline/models";
+import { BUILTIN_TEXT_STYLES } from "../captions/textStyle";
 
 const SETTINGS: ProjectSettings = {
   width: 1920,
@@ -588,37 +589,143 @@ describe("estimateExportDuration", () => {
 });
 
 describe("buildCaptionFilter", () => {
+  const GOLD = BUILTIN_TEXT_STYLES[0];      // 金色, bottom
+  const WHITE_TYPE = BUILTIN_TEXT_STYLES[1];
+  const RED_TOP = BUILTIN_TEXT_STYLES[4];   // 红色, top
+
   it("returns empty for missing or whitespace-only text", () => {
-    expect(buildCaptionFilter(undefined, 0, 1920, 1080)).toBe("");
-    expect(buildCaptionFilter("", 0, 1920, 1080)).toBe("");
-    expect(buildCaptionFilter("   \n\t", 0, 1920, 1080)).toBe("");
+    expect(buildCaptionFilter(undefined, GOLD, 1920, 1080)).toBe("");
+    expect(buildCaptionFilter("", GOLD, 1920, 1080)).toBe("");
+    expect(buildCaptionFilter("   \n\t", GOLD, 1920, 1080)).toBe("");
   });
 
-  it("emits a drawtext filter with the caption text quoted and styled", () => {
-    const f = buildCaptionFilter("山高路远", 0, 1920, 1080);
+  it("emits a drawtext filter with the caption text quoted and styled (gold built-in)", () => {
+    const f = buildCaptionFilter("山高路远", GOLD, 1920, 1080);
     expect(f).toContain("drawtext=fontfile=/System/Library/Fonts/PingFang.ttc");
     expect(f).toContain("text='山高路远'");
-    expect(f).toContain("fontcolor=#FFD700");           // style 0 → 金色
-    expect(f).toContain("y=h-text_h-86");                // bottom margin (1080 * 0.08)
+    expect(f).toContain("fontcolor=#FFD700");           // 金色
     expect(f).toContain("fontsize=60");                  // 1080 / 18
+    // Gold built-in slides UP from below, so y is an expression that
+    // resolves to the bottom-margin position after ENTER_SLIDE_DUR.
+    expect(f).toContain("y='if(lt(t\\,0.5)\\,h-(text_h+86)*t/0.5\\,h-text_h-86)'");
   });
 
-  it("style 4 (红色, 顶部) puts the y at the top margin", () => {
-    const f = buildCaptionFilter("提示", 4, 1920, 1080);
+  it("a top-positioned style (red) fades in from alpha=0", () => {
+    const f = buildCaptionFilter("提示", RED_TOP, 1920, 1080);
     expect(f).toContain("fontcolor=#FF4040");
     expect(f).toContain("y=86");                          // top, no h-text_h offset
+    expect(f).toContain("alpha='if(lt(t\\,0.4)\\,t/0.4\\,1)'");
+  });
+
+  it("the cyan-glow built-in fades in at the centre with a coloured border halo", () => {
+    const cyan = BUILTIN_TEXT_STYLES[2];
+    const f = buildCaptionFilter("呼吸", cyan, 1920, 1080);
+    expect(f).toContain("fontcolor=#00FFCC");
+    // Centre-positioned y, fade-in alpha, halo via bordercolor at 0.55 alpha.
+    expect(f).toContain("y=(h-text_h)/2");
+    expect(f).toContain("alpha='if(lt(t\\,0.4)\\,t/0.4\\,1)'");
+    expect(f).toContain("borderw=4");
+    expect(f).toContain("bordercolor=#00FFCC@0.55");
+  });
+
+  it("the white-slidein built-in slides in from the left edge", () => {
+    const slide = BUILTIN_TEXT_STYLES[3];
+    const f = buildCaptionFilter("起航", slide, 1920, 1080);
+    expect(f).toContain("fontcolor=#FFFFFF");
+    expect(f).toContain("y=h-text_h-86");                 // bottom-anchored
+    expect(f).toContain("x='if(lt(t\\,0.5)\\,-text_w+(w/2+text_w/2)*t/0.5\\,(w-text_w)/2)'");
+  });
+
+  it("the typewriter built-in emits one drawtext per character with time-gated enable", () => {
+    const f = buildCaptionFilter("你好世", WHITE_TYPE, 1920, 1080);
+    // Three chars → three drawtext filters joined by `,`.
+    const drawtextCount = (f.match(/drawtext=/g) ?? []).length;
+    expect(drawtextCount).toBe(3);
+    // Each char's substring appears in one of the drawtext filters.
+    expect(f).toContain("text='你'");
+    expect(f).toContain("text='你好'");
+    expect(f).toContain("text='你好世'");
+    // Slices: first two are bounded windows, the last stays open-ended.
+    expect(f).toContain("enable='between(t\\,0.000\\,0.080)'");
+    expect(f).toContain("enable='between(t\\,0.080\\,0.160)'");
+    expect(f).toContain("enable='gte(t\\,0.160)'");
   });
 
   it("escapes characters that are special inside a drawtext literal", () => {
-    const f = buildCaptionFilter("don't 50%\\path", 1, 1920, 1080);
+    const f = buildCaptionFilter("don't 50%\\path", WHITE_TYPE, 1920, 1080);
     // ' → \', % → \%, \ → \\
     expect(f).toContain("text='don\\'t 50\\%\\\\path'");
   });
 
   it("collapses newlines so they don't show as escape sequences", () => {
-    const f = buildCaptionFilter("line one\nline two", 0, 1920, 1080);
+    const f = buildCaptionFilter("line one\nline two", GOLD, 1920, 1080);
     expect(f).toContain("text='line one line two'");
     expect(f).not.toContain("\\n");
+  });
+
+  it("falls back to the first built-in when style is undefined", () => {
+    const f = buildCaptionFilter("hello", undefined, 1920, 1080);
+    expect(f).toContain("fontcolor=#FFD700");           // BUILTIN_TEXT_STYLES[0]
+  });
+
+  it("uses a custom style's color and position", () => {
+    const custom = { id: "x", name: "Magenta Top", color: "#FF00FF", position: "top" as const };
+    const f = buildCaptionFilter("hi", custom, 1920, 1080);
+    expect(f).toContain("fontcolor=#FF00FF");
+    expect(f).toContain("y=86");                         // position: top
+  });
+
+  it("escapes a Windows fontfile path so ffmpeg's filter parser doesn't split on `:`", () => {
+    // A raw `C:\WINDOWS\Fonts\msyh.ttc` makes ffmpeg cut the value at the
+    // first colon. ffmpeg has TWO levels of parsing (filtergraph then
+    // per-filter options), so a single `\:` only survives the first
+    // level and the option parser still sees a bare `:`. The wiki form
+    // is `C\\:/Windows/Fonts/...` — double backslash, one consumed by
+    // each level. JS source `"C\\\\:"` is the 4-char string `C\\:`.
+    const f = buildCaptionFilter("测试", GOLD, 1920, 1080, "C:\\WINDOWS\\Fonts\\msyh.ttc");
+    expect(f).toContain("drawtext=fontfile=C\\\\:/WINDOWS/Fonts/msyh.ttc");
+    expect(f).not.toContain("C:\\");
+    expect(f).not.toContain("fontfile=C:");
+  });
+
+  it("leaves POSIX fontfile paths untouched (no colon, no backslash)", () => {
+    const f = buildCaptionFilter("测试", GOLD, 1920, 1080, "/System/Library/Fonts/PingFang.ttc");
+    expect(f).toContain("drawtext=fontfile=/System/Library/Fonts/PingFang.ttc");
+  });
+
+  it("buildFFmpegCommand resolves a clip's textStyleId via the styles list", () => {
+    const customStyle = { id: "magenta", name: "Magenta", color: "#FF00FF", position: "top" as const };
+    const tl: Timeline = {
+      tracks: [{
+        id: "vt", type: "video",
+        clips: [{
+          id: "c1", src: "/v.mp4", start: 0, end: 5, timelineStart: 0,
+          name: "stage 1", text: "测试 ID 路径", textStyleId: "magenta",
+        }],
+        muted: false, locked: false, hidden: false,
+      }],
+      duration: 5,
+    };
+    const cmd = buildFFmpegCommand(tl, "/out.mp4", SETTINGS, [], {}, [...BUILTIN_TEXT_STYLES, customStyle]);
+    const f = getFilter(cmd);
+    expect(f).toContain("fontcolor=#FF00FF");
+    expect(f).toContain("y=86");
+  });
+
+  it("buildFFmpegCommand falls back to legacy textStyle index when no textStyleId", () => {
+    const tl: Timeline = {
+      tracks: [{
+        id: "vt", type: "video",
+        clips: [{
+          id: "c1", src: "/v.mp4", start: 0, end: 5, timelineStart: 0,
+          name: "stage 1", text: "旧项目", textStyle: 2,
+        }],
+        muted: false, locked: false, hidden: false,
+      }],
+      duration: 5,
+    };
+    const f = getFilter(buildFFmpegCommand(tl, "/out.mp4", SETTINGS));
+    expect(f).toContain("fontcolor=#00FFCC");           // 青色 (built-in #2)
   });
 
   it("inserts the drawtext into the per-clip filter chain when text is set", () => {
@@ -645,7 +752,7 @@ describe("buildCaptionFilter", () => {
     const f = getFilter(buildFFmpegCommand(tl, "/out.mp4", SETTINGS));
     expect(f).toContain("format=yuv420p,drawtext=");
     expect(f).toContain("text='你好世界'");
-    expect(f).toContain("fontcolor=#00FFFF");           // style 2 → 青色
+    expect(f).toContain("fontcolor=#00FFCC");           // style 2 → 青色
   });
 
   it("clips without text get NO drawtext segment", () => {

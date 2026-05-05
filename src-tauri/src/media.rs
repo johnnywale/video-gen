@@ -41,6 +41,16 @@ pub fn probe_media_file(path: &str) -> Result<MediaInfo, String> {
 
         match stream.parameters().medium() {
             ffmpeg::media::Type::Video => {
+                // Skip "attached picture" streams (e.g. mp3 album art, m4a
+                // cover art). They live in a video stream slot but carry a
+                // single still frame, not playable video — counting them
+                // would route audio-only files into the video bin.
+                if stream
+                    .disposition()
+                    .contains(ffmpeg::format::stream::Disposition::ATTACHED_PIC)
+                {
+                    continue;
+                }
                 has_video = true;
                 let decoder = ffmpeg::codec::context::Context::from_parameters(stream.parameters())
                     .map_err(|e| format!("Codec context error: {e}"))?;

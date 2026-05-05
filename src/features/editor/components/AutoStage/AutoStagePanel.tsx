@@ -13,6 +13,8 @@ import { useSettingsStore } from "../../store/settingsStore";
 import { useTopicsStore } from "../../store/topicsStore";
 import { useCaptionsStore } from "../../store/captionsStore";
 import { useFontsStore } from "../../store/fontsStore";
+import { useTextStylesStore } from "../../store/textStylesStore";
+import { legacyIndexToId } from "@/domain/captions/textStyle";
 import { makeBatch } from "@/domain/captions/captionBatch";
 import { getOrGenerateSpeech, peekCachedSpeech } from "../../services/speechService";
 import { TopicsManagerModal } from "../Topics/TopicsManagerModal";
@@ -43,15 +45,6 @@ const VOICE_OPTIONS: { id: string; label: string }[] = [
   { id: "Elegant_Man", label: "Elegant Man" },
 ];
 const DEFAULT_VOICE = "Wise_Woman";
-
-/** Text overlay styles — indices match the Python video_maker.py TEXT_STYLES table. */
-const TEXT_STYLE_OPTIONS: { id: number; label: string }[] = [
-  { id: 0, label: "0 — 金色（向上滑入）" },
-  { id: 1, label: "1 — 白色（打字机）" },
-  { id: 2, label: "2 — 青色（淡入发光）" },
-  { id: 3, label: "3 — 白色（左侧滑入）" },
-  { id: 4, label: "4 — 红色（顶部淡入）" },
-];
 
 const SPEED_PRESETS = [0.25, 0.33, 0.5, 0.75, 1, 1.5, 2];
 const SPEED_MIN = 0.25;
@@ -135,6 +128,7 @@ export function AutoStagePanel({ onClose }: Props) {
   const transitionDuration = useEditorStore((s) => s.projectSettings.transitionDuration);
   const fonts = useFontsStore((s) => s.fonts);
   const defaultCjkFamily = useFontsStore((s) => s.defaultCjkFamily);
+  const textStyles = useTextStylesStore((s) => s.styles);
 
   const selectedMedia = videoMedia.find((m) => m.id === mediaId) ?? null;
 
@@ -275,9 +269,11 @@ export function AutoStagePanel({ onClose }: Props) {
     const clamped = Math.max(SPEED_MIN, Math.min(SPEED_MAX, value));
     setPlan(updateStage(plan, stageId, { speed: clamped }));
   };
-  const handleSetTextStyle = (stageId: string, value: number) => {
+  const handleSetTextStyleId = (stageId: string, id: string) => {
     if (!plan) return;
-    setPlan(updateStage(plan, stageId, { textStyle: value }));
+    // Setting textStyleId clears the legacy textStyle index so it can't
+    // override the new ID at render time.
+    setPlan(updateStage(plan, stageId, { textStyleId: id, textStyle: undefined }));
   };
   const handleSetFontFamily = (stageId: string, family: string) => {
     if (!plan) return;
@@ -301,8 +297,7 @@ export function AutoStagePanel({ onClose }: Props) {
       const captions = await aiGenerateCaptions(
         topic.trim(),
         plan.stages.length,
-        apiSettings.anthropicBaseUrl,
-        apiSettings.anthropicApiKey,
+        apiSettings.litellmApiKey,
         undefined,
         promptTemplate
       );
@@ -405,10 +400,9 @@ export function AutoStagePanel({ onClose }: Props) {
     async (stageId: string, text: string, force: boolean): Promise<string | null> => {
       const trimmed = text.trim();
       if (!trimmed) return null;
-      const apiKey = apiSettings.minimaxApiKey.trim();
-      const baseUrl = apiSettings.minimaxBaseUrl.trim();
-      if (!apiKey || !baseUrl) {
-        recordSpeechFailure(stageId, trimmed, new Error("请先在「设置」中填写 MiniMax 密钥"));
+      const apiKey = apiSettings.litellmApiKey.trim();
+      if (!apiKey) {
+        recordSpeechFailure(stageId, trimmed, new Error("请先在「设置」中填写 LiteLLM 密钥"));
         return null;
       }
       setSpeechBusy((m) => ({ ...m, [stageId]: true }));
@@ -419,7 +413,6 @@ export function AutoStagePanel({ onClose }: Props) {
       try {
         const { filePath } = await getOrGenerateSpeech(trimmed, voiceId, {
           apiKey,
-          baseUrl,
           force,
           cacheDir: apiSettings.speechCacheDir,
         });
@@ -435,7 +428,7 @@ export function AutoStagePanel({ onClose }: Props) {
         });
       }
     },
-    [apiSettings.minimaxApiKey, apiSettings.minimaxBaseUrl, apiSettings.speechCacheDir, voiceId, recordSpeechFailure]
+    [apiSettings.litellmApiKey, apiSettings.speechCacheDir, voiceId, recordSpeechFailure]
   );
 
   /** 试听: play the cached audio if present; otherwise generate (cache miss
@@ -458,6 +451,37 @@ export function AutoStagePanel({ onClose }: Props) {
     if (!stage || !(stage.text ?? "").trim()) return;
     const fresh = await generateSpeechForStage(stageId, stage.text!, true);
     if (fresh) await playPreview(fresh);
+  };
+
+  // Stages that have non-empty text but no cached audio yet — these are
+  // what 批量生成 targets. Failed prior attempts also fall in here (no
+  // cache means no successful generation), so the batch button doubles as
+  // a "retry everything that failed" affordance.
+  const missingSpeechCount = useMemo(() => {
+    if (!plan) return 0;
+    return plan.stages.filter(
+      (s) => (s.text ?? "").trim().length > 0 && !speechPaths[s.id]
+    ).length;
+  }, [plan, speechPaths]);
+
+  const [isBatchGenerating, setIsBatchGenerating] = useState(false);
+  const handleBatchGenerateMissing = async () => {
+    if (!plan || isBatchGenerating) return;
+    const targets = plan.stages.filter(
+      (s) => (s.text ?? "").trim().length > 0 && !speechPaths[s.id]
+    );
+    if (targets.length === 0) return;
+    setIsBatchGenerating(true);
+    try {
+      // Parallel — matches handleAddToTimeline's pattern for the same call.
+      // generateSpeechForStage owns its own per-stage busy/error state, so
+      // each card's pill updates as its request completes.
+      await Promise.all(
+        targets.map((s) => generateSpeechForStage(s.id, s.text!, false))
+      );
+    } finally {
+      setIsBatchGenerating(false);
+    }
   };
 
   // Stop preview audio when the modal closes.
@@ -536,14 +560,13 @@ export function AutoStagePanel({ onClose }: Props) {
     });
     const speechTargets = stageMeta.filter((x) => (x.stage.text ?? "").trim().length > 0);
     if (speechTargets.length > 0) {
-      const apiKey = apiSettings.minimaxApiKey.trim();
-      const baseUrl = apiSettings.minimaxBaseUrl.trim();
-      if (apiKey && baseUrl) {
+      const apiKey = apiSettings.litellmApiKey.trim();
+      if (apiKey) {
         const results = await Promise.all(speechTargets.map(async (t) => {
           try {
             setSpeechBusy((m) => ({ ...m, [t.stage.id]: true }));
             const { filePath } = await getOrGenerateSpeech(t.stage.text!, voiceId, {
-              apiKey, baseUrl,
+              apiKey,
               cacheDir: apiSettings.speechCacheDir,
             });
             const info = await probeMedia(filePath);
@@ -592,7 +615,7 @@ export function AutoStagePanel({ onClose }: Props) {
           }
         }
       } else {
-        console.warn("[AutoStage] skipping voiceover — MiniMax credentials not set");
+        console.warn("[AutoStage] skipping voiceover — LiteLLM API key not set");
       }
     }
 
@@ -826,6 +849,22 @@ export function AutoStagePanel({ onClose }: Props) {
                   >
                     ✨ {isGeneratingCaptions ? "生成中…" : "AI 生成文字"}
                   </button>
+                  <button
+                    className={styles.aiBtn}
+                    onClick={handleBatchGenerateMissing}
+                    disabled={isBatchGenerating || missingSpeechCount === 0}
+                    title={
+                      missingSpeechCount === 0
+                        ? "所有有文字的分段都已生成配音"
+                        : `为 ${missingSpeechCount} 个未生成配音的分段批量调用 TTS`
+                    }
+                  >
+                    ♪ {isBatchGenerating
+                      ? "批量生成中…"
+                      : missingSpeechCount > 0
+                      ? `批量生成配音 (${missingSpeechCount})`
+                      : "批量生成配音"}
+                  </button>
                   <span className={styles.totalValue}>
                     {projectedOutput !== total
                       ? `输出 ${projectedOutput.toFixed(2)} 秒 · 时间线 ${total.toFixed(2)} 秒`
@@ -903,11 +942,12 @@ export function AutoStagePanel({ onClose }: Props) {
                       <div className={styles.cardRow}>
                         <label>样式</label>
                         <select
-                          value={s.textStyle ?? 0}
-                          onChange={(e) => handleSetTextStyle(s.id, Number(e.target.value))}
+                          value={s.textStyleId ?? legacyIndexToId(s.textStyle)}
+                          onChange={(e) => handleSetTextStyleId(s.id, e.target.value)}
+                          title="在「文字」侧边栏可新增自定义样式"
                         >
-                          {TEXT_STYLE_OPTIONS.map((opt) => (
-                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                          {textStyles.map((opt) => (
+                            <option key={opt.id} value={opt.id}>{opt.name}</option>
                           ))}
                         </select>
                       </div>

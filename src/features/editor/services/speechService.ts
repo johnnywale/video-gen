@@ -6,7 +6,6 @@ import {
 
 interface GenerateOpts {
   apiKey: string;
-  baseUrl: string;
   /** When true, skip the cache and call the API even if a hit exists. Used
    *  by "重新生成" to deliberately replace stale audio. */
   force?: boolean;
@@ -41,7 +40,6 @@ export async function getOrGenerateSpeech(
     trimmed,
     voiceId,
     opts.apiKey,
-    opts.baseUrl,
     opts.cacheDir
   );
   recordSpeechCache(voiceId, trimmed, filePath);

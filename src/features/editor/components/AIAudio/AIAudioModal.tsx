@@ -45,8 +45,7 @@ export function AIAudioModal({ onClose }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const minimaxKey = useSettingsStore((s) => s.settings.minimaxApiKey);
-  const minimaxBaseUrl = useSettingsStore((s) => s.settings.minimaxBaseUrl);
+  const litellmKey = useSettingsStore((s) => s.settings.litellmApiKey);
   const addMediaFile = useEditorStore((s) => s.addMediaFile);
 
   const handleGenerate = async () => {
@@ -54,13 +53,9 @@ export function AIAudioModal({ onClose }: Props) {
       setError("请输入音乐描述");
       return;
     }
-    const trimmedKey = minimaxKey.trim();
+    const trimmedKey = litellmKey.trim();
     if (!trimmedKey) {
-      setError("请先在「设置」中填写 MiniMax API 密钥");
-      return;
-    }
-    if (!minimaxBaseUrl.trim()) {
-      setError("请先在「设置」中填写 MiniMax 服务地址");
+      setError("请先在「设置」中填写 LiteLLM API 密钥");
       return;
     }
     setBusy(true);
@@ -69,7 +64,6 @@ export function AIAudioModal({ onClose }: Props) {
       const filePath = await aiGenerateMusic(
         prompt.trim(),
         trimmedKey,
-        minimaxBaseUrl.trim(),
         duration > 0 ? duration : undefined
       );
       const info = await probeMedia(filePath);
