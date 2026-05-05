@@ -1,0 +1,247 @@
+.container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+.title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.04em;
+}
+.subtitle {
+  display: block;
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  margin-top: 2px;
+}
+
+.body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Duration slider section */
+.durationSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+}
+.durationLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.durationValue {
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 18px;
+  background: transparent;
+  cursor: pointer;
+}
+.slider::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-text);
+  margin-top: -6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* Grid of transition cards */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  gap: 6px;
+}
+
+.card {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface-deep);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+  transition: background 0.12s, border-color 0.12s, transform 0.06s;
+  overflow: hidden;
+}
+.card:hover {
+  background: var(--color-surface-hover);
+  border-color: #4a4a55;
+  transform: translateY(-1px);
+}
+.card.active {
+  background: rgba(var(--color-accent-rgb), 0.18);
+  border-color: var(--color-accent);
+}
+.card.active::after {
+  content: "✓";
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cardName {
+  font-size: 10px;
+  color: var(--color-text);
+  text-align: center;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.card.active .cardName {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+/* The visual is a tiny CSS animation that hints at the transition style. */
+.visual {
+  width: 100%;
+  height: 56%;
+  position: relative;
+  border-radius: 3px;
+  overflow: hidden;
+  background: linear-gradient(135deg, #44447a, #6675ff);
+}
+.visual::before,
+.visual::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.visual::after {
+  background: linear-gradient(135deg, #f59b42, #f5b042);
+  opacity: 0;
+  animation: defaultBlink 2s ease-in-out infinite alternate;
+}
+@keyframes defaultBlink {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Per-style visual variants. Each makes the orange overlay enter
+   differently to evoke the transition's character. */
+.visualNone .visual::after { animation: none; opacity: 0; }
+.visualNone .visual { background: #2a2a32; }
+
+.visualFade .visual::after { animation: fadeBlink 1.6s ease-in-out infinite alternate; }
+@keyframes fadeBlink { from { opacity: 0; } to { opacity: 1; } }
+
+.visualFadeBlack .visual::after { background: #000; animation: fadeBlink 1.6s ease-in-out infinite alternate; }
+.visualFadeWhite .visual::after { background: #fff; animation: fadeBlink 1.6s ease-in-out infinite alternate; }
+
+.visualDissolve .visual::after {
+  animation: fadeBlink 1.4s ease-in-out infinite alternate;
+  background: repeating-linear-gradient(45deg, #f59b42, #f59b42 2px, transparent 2px, transparent 4px);
+}
+
+.visualWipeleft .visual::after { animation: wipeLeft 1.6s ease-in-out infinite alternate; }
+@keyframes wipeLeft { from { transform: translateX(100%); opacity: 1; } to { transform: translateX(0); opacity: 1; } }
+.visualWiperight .visual::after { animation: wipeRight 1.6s ease-in-out infinite alternate; }
+@keyframes wipeRight { from { transform: translateX(-100%); opacity: 1; } to { transform: translateX(0); opacity: 1; } }
+.visualWipeup .visual::after { animation: wipeUp 1.6s ease-in-out infinite alternate; }
+@keyframes wipeUp { from { transform: translateY(100%); opacity: 1; } to { transform: translateY(0); opacity: 1; } }
+.visualWipedown .visual::after { animation: wipeDown 1.6s ease-in-out infinite alternate; }
+@keyframes wipeDown { from { transform: translateY(-100%); opacity: 1; } to { transform: translateY(0); opacity: 1; } }
+
+.visualSlideleft .visual::after { animation: wipeLeft 1.6s ease-in-out infinite alternate; }
+.visualSlideright .visual::after { animation: wipeRight 1.6s ease-in-out infinite alternate; }
+.visualSlideup .visual::after { animation: wipeUp 1.6s ease-in-out infinite alternate; }
+.visualSlidedown .visual::after { animation: wipeDown 1.6s ease-in-out infinite alternate; }
+
+.visualCircleopen .visual::after {
+  border-radius: 50%;
+  animation: circleOpen 1.6s ease-in-out infinite alternate;
+}
+.visualCircleclose .visual::after {
+  border-radius: 50%;
+  animation: circleClose 1.6s ease-in-out infinite alternate;
+}
+@keyframes circleOpen {
+  from { transform: scale(0.05); opacity: 1; }
+  to { transform: scale(1.5); opacity: 1; }
+}
+@keyframes circleClose {
+  from { transform: scale(1.5); opacity: 1; }
+  to { transform: scale(0.05); opacity: 1; }
+}
+
+.visualRadial .visual::after {
+  background: conic-gradient(#f59b42 0deg, transparent 0deg);
+  animation: radialSweep 1.6s linear infinite;
+}
+@keyframes radialSweep {
+  from { background: conic-gradient(#f59b42 0deg, transparent 0deg); }
+  to { background: conic-gradient(#f59b42 360deg, transparent 360deg); }
+}
+
+.visualZoomin .visual::after {
+  animation: zoomIn 1.6s ease-in-out infinite alternate;
+}
+@keyframes zoomIn {
+  from { transform: scale(0.2); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+
+.summary {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: rgba(var(--color-accent-rgb), 0.08);
+  border-left: 3px solid var(--color-accent);
+  padding: 8px 10px;
+  border-radius: 3px;
+  line-height: 1.5;
+}
+.summary strong {
+  color: var(--color-accent);
+}

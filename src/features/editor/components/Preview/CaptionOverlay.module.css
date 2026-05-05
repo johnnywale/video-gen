@@ -1,0 +1,87 @@
+/* Caption overlay sits on top of the <video> element, positioned within
+   the canvas area. Five style variants approximate the Python video_maker
+   TEXT_STYLES table — at export time the same indices map to ffmpeg
+   drawtext filters. Here it's a static (non-animated) preview, enough for
+   the user to see what each style looks like and where it lands. */
+
+.overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+  padding: 0 24px;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: pre-wrap;
+  max-width: 100%;
+}
+
+/* Style 0 — Gold, slide up (bottom). */
+.style0 {
+  bottom: 12%;
+  color: #FFD700;
+  font-size: clamp(20px, 4vw, 42px);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.9), 0 0 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Style 1 — White typewriter w/ semi-transparent box (bottom). */
+.style1 {
+  bottom: 12%;
+}
+.style1 > span {
+  background: rgba(0, 0, 0, 0.55);
+  color: #ffffff;
+  padding: 10px 22px;
+  border-radius: 4px;
+  font-size: clamp(18px, 3.6vw, 36px);
+}
+
+/* Style 2 — Cyan glow, center. */
+.style2 {
+  top: 50%;
+  transform: translateY(-50%);
+  color: #00FFCC;
+  font-size: clamp(20px, 4vw, 40px);
+  text-shadow:
+    0 0 12px rgba(0, 255, 204, 0.7),
+    0 0 24px rgba(0, 255, 204, 0.4),
+    2px 2px 0 rgba(0, 100, 80, 0.9);
+}
+
+/* Style 3 — White slide left, bottom. */
+.style3 {
+  bottom: 12%;
+  color: #ffffff;
+  font-size: clamp(18px, 3.4vw, 36px);
+  text-shadow: 3px 3px 0 rgba(0, 0, 0, 0.85), 1px 1px 0 #3366CC;
+}
+
+/* Style 4 — Red, top. */
+.style4 {
+  top: 8%;
+  color: #FF4444;
+  font-size: clamp(18px, 3.6vw, 38px);
+  text-shadow:
+    2px 2px 0 rgba(255, 255, 255, 0.95),
+    0 0 4px rgba(0, 0, 0, 0.5);
+}
+
+/* A subtle fade-in on every clip change so caption transitions don't pop. */
+@keyframes captionIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.style2.overlay {
+  animation: captionInCenter 0.25s ease-out both;
+}
+@keyframes captionInCenter {
+  from { opacity: 0; transform: translateY(calc(-50% + 8px)); }
+  to   { opacity: 1; transform: translateY(-50%); }
+}
+.overlay:not(.style2) {
+  animation: captionIn 0.25s ease-out both;
+}

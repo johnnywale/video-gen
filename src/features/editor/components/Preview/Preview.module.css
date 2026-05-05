@@ -1,0 +1,242 @@
+.previewContainer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: #15151a;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* (#24) Slightly above pure-black so the edge of dark frames is visible. */
+.canvasArea {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #15151a;
+  overflow: hidden;
+  min-height: 0;
+  position: relative;
+}
+
+/* Cross-fade preview: a canvas that snapshots the outgoing video frame
+   just before the clip swap, then fades to transparent while the <video>
+   element plays the next clip beneath. Approximates ffmpeg's `fade`-family
+   xfade transitions in real time. For wipes/slides the actual export will
+   look different — this is a fade-style stand-in for any non-`none`
+   transition type. */
+.fadeCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  /* Default to invisible; opacity is driven directly via inline style
+     so we can synchronize the snapshot + animate without a re-render. */
+  opacity: 0;
+}
+
+.previewBadge {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(0, 0, 0, 0.45);
+  padding: 3px 7px;
+  border-radius: 3px;
+  pointer-events: none;
+  z-index: 6;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.video {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  background: #000;
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* (#19/20) Roomier control bar; play/pause is the visual anchor and is
+   centered with siblings. */
+.controls {
+  height: 52px;
+  background: var(--color-surface);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 8px;
+  flex-shrink: 0;
+  border-top: 1px solid var(--color-border);
+}
+
+.transportGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* (#25) Hierarchy fix: play button is much larger than step buttons,
+   uses the accent color so it reads as the dominant control. */
+.playBtn {
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  color: white;
+  font-size: 22px;
+  cursor: pointer;
+  width: 46px;
+  height: 36px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.05s, box-shadow 0.15s;
+  box-shadow: 0 2px 6px rgba(var(--color-accent-rgb), 0.35);
+}
+.playBtn:hover {
+  background: #7585ff;
+  border-color: #7585ff;
+  box-shadow: 0 3px 10px rgba(var(--color-accent-rgb), 0.5);
+}
+.playBtn:active {
+  transform: scale(0.96);
+}
+
+.stepBtn {
+  background: none;
+  border: none;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  width: 30px;
+  height: 30px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  font-weight: 700;
+}
+.stepBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+/* (#21) Tabular-nums + monospace + fixed-width font — no jitter while playing. */
+.timecode {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  letter-spacing: 0.02em;
+}
+
+/* (#26) Volume / mute control next to the timecode. */
+.volumeGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+}
+/* (#22) Larger volume controls — easier to grab. */
+.volumeBtn {
+  background: none;
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+  font-size: 16px;
+  width: 28px;
+  height: 28px;
+  border-radius: 5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.volumeBtn:hover {
+  background: var(--color-surface-hover);
+}
+.volumeSlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 90px;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+}
+.volumeSlider::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border);
+}
+.volumeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-text);
+  margin-top: -6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+.volumeSlider::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+.volumeSlider::-moz-range-track {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border);
+}
+.volumeSlider::-moz-range-thumb {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-text);
+  cursor: pointer;
+}
+
+/* (#22/23) Aspect ratio chips look like buttons; active one glows. */
+.aspectGroup {
+  display: flex;
+  gap: 4px;
+  margin-left: 10px;
+  padding: 2px;
+  background: var(--color-surface-deep);
+  border-radius: 5px;
+}
+
+.aspectBtn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: 10px;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  font-weight: 600;
+}
+.aspectBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+.aspectBtnActive {
+  background: rgba(var(--color-accent-rgb), 0.18);
+  color: var(--color-accent);
+  border-color: rgba(var(--color-accent-rgb), 0.45);
+}

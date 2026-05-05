@@ -1,0 +1,255 @@
+.inspector {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-left: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+/* (#27) Brighter panel header so it reads at a glance. */
+.title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.04em;
+}
+
+.empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 12px;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.clipName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 4px;
+}
+
+.trackBadge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+  background: var(--color-surface-hover);
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+  margin-bottom: 12px;
+}
+
+/* (#30) Sections get clearer visual separation. */
+.section {
+  margin-bottom: 18px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--color-border-subtle);
+}
+.section:last-child {
+  border-bottom: none;
+}
+
+/* (#29) Section titles now visibly different from row labels: bigger,
+   bold, accent-tinted underline so the hierarchy reads at a glance. */
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.04em;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid var(--color-accent);
+  display: inline-block;
+}
+
+/* (#31) Strict label/control alignment via grid: label fixed-width on the
+   left, control fills the right. Reads consistently across rows. */
+.row {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+/* (#30/#32) Brighter help dot — visible without losing its quiet status. */
+.helpHint {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--color-surface-hover);
+  border: 1px solid #5a5a66;
+  color: #d4d4dc;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: help;
+}
+.helpHint:hover {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: white;
+}
+
+.value {
+  font-size: 12px;
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* (#28) Inputs read as inputs: clear bg, visible border, focus ring. */
+.input {
+  width: 100%;
+  padding: 5px 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface-deep);
+  color: var(--color-text);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.input:hover {
+  border-color: #4a4a55;
+}
+.input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(var(--color-accent-rgb), 0.2);
+}
+/* (#32) Disabled state — clearly read-only, no false-input affordance. */
+.input:disabled,
+.select:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: #15151a;
+  color: var(--color-text-secondary);
+}
+
+/* (#29) Standard chevron via background image rather than the browser's
+   tiny native double-arrow widget. Bigger click target, clearer affordance.
+   (#31) More internal padding so the option text isn't glued to the border. */
+.select {
+  width: 100%;
+  padding: 6px 30px 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface-deep);
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='none' stroke='%23c8c8d0' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M1 1l4 4 4-4'/></svg>");
+  background-repeat: no-repeat;
+  background-position: right 11px center;
+}
+.select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(var(--color-accent-rgb), 0.2);
+}
+
+.toggleBtn {
+  padding: 3px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface-deep);
+  color: var(--color-text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.toggleBtn:hover {
+  background: var(--color-surface-hover);
+}
+.toggleBtnOn {
+  background: rgba(var(--color-accent-rgb), 0.15);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.rangeItem {
+  padding: 8px;
+  margin-bottom: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-deep);
+}
+
+.rangeHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.rangeColor {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.rangeLabel {
+  flex: 1;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.rangeLabel:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+}
+
+.rangeDelete {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0 4px;
+  border-radius: 2px;
+}
+.rangeDelete:hover {
+  color: var(--color-danger);
+}

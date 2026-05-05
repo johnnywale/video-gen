@@ -1,0 +1,9 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for the video editor",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:default"
+  ]
+}

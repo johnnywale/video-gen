@@ -1,0 +1,82 @@
+:root {
+  --color-bg: #0f0f12;
+  --color-surface: #1c1c22;
+  --color-surface-deep: #1a1a1f;
+  --color-surface-hover: #2a2a32;
+  --color-border: #34343d;
+  --color-border-subtle: #26262d;
+  --color-text: #f2f2f5;
+  --color-text-secondary: #c8c8d0;   /* readable secondary copy */
+  --color-text-muted: #8a8a96;       /* badges / timecodes only */
+  --color-text-placeholder: #7e7e8a; /* placeholders must remain readable */
+  --color-accent: #6675ff;
+  --color-accent-rgb: 102, 117, 255;
+  --color-success: #3aa45e;          /* less harsh than #2ea44f */
+  --color-success-hover: #45b669;
+  --color-danger: #f85149;
+  --color-danger-subtle: rgba(248, 81, 73, 0.12);
+  --color-clip-bg: #2c2c3e;
+  --color-clip-border: #46466a;
+  --font-ui: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "Menlo", "Consolas", "Monaco", monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  background: var(--color-bg);
+}
+
+body {
+  font-family: var(--font-ui);
+  color: var(--color-text);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* (#8) Selected text uses an accessible accent-tinted bg with high-
+   contrast text — the default OS selection blue can wash out dark inputs. */
+::selection {
+  background: rgba(var(--color-accent-rgb), 0.45);
+  color: #ffffff;
+}
+
+/* Invalid form inputs get a red border + soft red focus ring. Apply by
+   adding aria-invalid="true" to the element. */
+[aria-invalid="true"] {
+  border-color: var(--color-danger) !important;
+}
+[aria-invalid="true"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(248, 81, 73, 0.25) !important;
+}
+
+/* Scrollbars stay subtle but visible (#40 / #17). The horizontal scrollbar
+   under the timeline used to disappear into the bg — bumping the thumb
+   color and giving the track a faint background fixes that. */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+::-webkit-scrollbar-thumb {
+  background: #4a4a55;
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #66667a;
+  background-clip: padding-box;
+  border: 2px solid transparent;
+}

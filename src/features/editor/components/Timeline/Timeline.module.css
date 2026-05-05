@@ -1,0 +1,498 @@
+.timelineContainer {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-surface-deep);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.scrollArea {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.zoomBar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+/* (#33) Larger toolbar buttons — easier to hit, easier to scan. */
+.zoomBtn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  width: 30px;
+  height: 28px;
+  border-radius: 5px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  padding: 0;
+}
+.zoomBtn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+.zoomBtn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+/* The "Fit / 适配" button — text rather than icon. Keep it consistent
+   with sibling icon buttons (#35). */
+.zoomBtn:last-child {
+  width: auto;
+  padding: 0 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.zoomSeparator {
+  width: 1px;
+  height: 18px;
+  background: var(--color-border);
+  margin: 0 2px;
+}
+
+.zoomLabel {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  min-width: 56px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* (#34) Custom zoom slider — thick track, large handle.
+   Cross-browser: separate ::-webkit-slider-thumb and ::-moz-range-thumb. */
+.zoomSlider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 140px;
+  height: 22px;
+  background: transparent;
+  cursor: pointer;
+  margin: 0 4px;
+}
+.zoomSlider:focus {
+  outline: none;
+}
+
+/* WebKit / Chromium track. */
+.zoomSlider::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border);
+}
+.zoomSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-text);
+  margin-top: -6px;          /* center on 6px track */
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.08s, background 0.15s;
+}
+.zoomSlider::-webkit-slider-thumb:hover {
+  transform: scale(1.12);
+}
+.zoomSlider:focus::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px rgba(var(--color-accent-rgb), 0.3);
+}
+
+/* Firefox. */
+.zoomSlider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border);
+}
+.zoomSlider::-moz-range-progress {
+  background: rgba(var(--color-accent-rgb), 0.45);
+  height: 6px;
+  border-radius: 3px;
+}
+.zoomSlider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  border: 2px solid var(--color-text);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+}
+
+.rulerRow {
+  display: flex;
+  height: 28px;
+  border-bottom: 1px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-surface-deep);
+}
+
+.trackHeaderSpacer {
+  width: 100px;
+  flex-shrink: 0;
+  border-right: 1px solid var(--color-border);
+}
+
+.ruler {
+  position: relative;
+  cursor: pointer;
+  flex: none;
+}
+
+/* (#39) Major / minor ticks differ in height + border weight so the
+   ruler reads at a glance. The major class is set on every Nth tick
+   from the React side (see Timeline.tsx). */
+.tick {
+  position: absolute;
+  top: 60%;
+  height: 40%;
+  border-left: 1px solid var(--color-border-subtle);
+  padding-left: 4px;
+}
+.tickMajor {
+  top: 0;
+  height: 100%;
+  border-left: 1px solid #4a4a55;
+}
+
+/* (#37) Larger ruler font + brighter colour. */
+.tickLabel {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  line-height: 28px;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+.timeRange {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  opacity: 0.25;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 2px;
+}
+
+.markingLine {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: #f59b42;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.zoomBtnActive {
+  background: rgba(var(--color-accent-rgb), 0.2) !important;
+  color: var(--color-accent) !important;
+  border-color: var(--color-accent) !important;
+}
+
+/* (#39) Playhead now has a triangular handle on top so the user has
+   something to grab. The line itself stays a thin accent stripe. */
+.playhead {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  height: 100%;
+  background: var(--color-accent);
+  z-index: 5;
+  pointer-events: none;
+}
+.playhead::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 14px;
+  background: var(--color-accent);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  pointer-events: none;
+}
+
+.tracks {
+  display: flex;
+  flex-direction: column;
+}
+
+.track {
+  display: flex;
+  border-bottom: 1px solid var(--color-border);
+  position: relative;
+}
+
+.trackVideo {
+  height: 80px;
+}
+
+.trackAudio {
+  height: 60px;
+}
+
+/* (#40) Drag handle along the bottom edge of every track — drag vertically
+   to resize. The visible bar is thin (3px) but the hit zone extends 4px
+   past it so the cursor finds the handle easily. */
+.trackResize {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -3px;
+  height: 7px;
+  cursor: ns-resize;
+  z-index: 6;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.trackResize::after {
+  content: "";
+  width: 100%;
+  height: 1px;
+  background: transparent;
+  transition: background 0.15s, height 0.15s;
+}
+.trackResize:hover::after,
+.trackResizing::after {
+  background: var(--color-accent);
+  height: 2px;
+}
+
+.trackHidden {
+  opacity: 0.4;
+}
+
+.trackHeader {
+  width: 100px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 6px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.trackHeaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* (#36) Brighter track type label. Coloured strip on the left of the
+   header tells video vs. audio at a glance. */
+.trackType {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.04em;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.trackType::before {
+  content: "";
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--track-color, var(--color-accent));
+}
+.trackVideo .trackType::before { background: #6675ff; }
+.trackAudio .trackType::before { background: #3aa45e; }
+
+.trackRemove {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 1px 3px;
+  border-radius: 3px;
+}
+.trackRemove:hover {
+  background: var(--color-danger-subtle);
+  color: var(--color-danger);
+}
+
+.trackControls {
+  display: flex;
+  gap: 2px;
+}
+
+/* (#36) Brighter track-control buttons (M / L / H) so they don't blend
+   into the header bg. */
+.trackControlBtn {
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border-subtle);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  width: 20px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  transition: background 0.1s, color 0.1s, border-color 0.1s;
+}
+.trackControlBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: #4a4a55;
+}
+.trackControlActive {
+  color: var(--color-accent);
+  border-color: rgba(var(--color-accent-rgb), 0.5);
+  background: rgba(var(--color-accent-rgb), 0.12);
+}
+.trackControlLocked {
+  color: #f5b042;
+  border-color: rgba(245, 176, 66, 0.5);
+  background: rgba(245, 176, 66, 0.12);
+}
+
+.trackBody {
+  position: relative;
+  flex: none;
+}
+
+.trackBodyMuted {
+  opacity: 0.5;
+}
+
+.trackBodyLocked {
+  cursor: not-allowed;
+}
+
+.clip {
+  position: absolute;
+  top: 6px;
+  height: calc(100% - 12px);
+  background: var(--color-clip-bg);
+  border: 1px solid var(--color-clip-border);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  cursor: grab;
+  user-select: none;
+  overflow: hidden;
+  transition: border-color 0.1s;
+}
+.clip:hover {
+  border-color: var(--color-accent);
+}
+
+.clipDragging {
+  cursor: grabbing;
+  opacity: 0.85;
+  z-index: 20;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+.clipSelected {
+  border-color: var(--color-accent) !important;
+  box-shadow: 0 0 0 2px rgba(var(--color-accent-rgb), 0.3);
+}
+
+.clipVisualOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.waveformPath {
+  fill: rgba(91, 106, 245, 0.5);
+}
+
+.clipLabel {
+  font-size: 11px;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.7);
+}
+
+.clipDuration {
+  font-size: 9px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  margin-left: 4px;
+  font-variant-numeric: tabular-nums;
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.7);
+}
+
+.clipLocked {
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+
+.clipRemove {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px;
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+.clipRemove:hover {
+  color: var(--color-danger);
+}
+
+.snapLine {
+  position: absolute;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--color-accent);
+  opacity: 0.7;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.trackBodyDragOver {
+  background: rgba(91, 106, 245, 0.08);
+}

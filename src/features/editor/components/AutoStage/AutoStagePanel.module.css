@@ -1,0 +1,462 @@
+/* (#1) Stronger dim + backdrop blur so the layer separation is unmistakable. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: fadeIn 0.12s ease-out;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+/* (#2) Real elevation: drop shadow + accent rim so the modal sits above
+   the page rather than sinking into it. */
+.modal {
+  background: var(--color-surface, #1c1d21);
+  color: var(--color-text, #e8e8ea);
+  border: 1px solid var(--color-border, #2c2d33);
+  border-radius: 10px;
+  width: min(840px, 92vw);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.6),
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  animation: modalIn 0.16s ease-out;
+}
+@keyframes modalIn {
+  from { transform: translateY(8px) scale(0.99); opacity: 0; }
+  to   { transform: none; opacity: 1; }
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border, #2c2d33);
+}
+.title {
+  font-size: 14px;
+  font-weight: 600;
+}
+/* (#3) Bigger close button — 32×32 hit target. */
+.closeBtn {
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--color-text-secondary);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.closeBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+  border-color: var(--color-border);
+}
+
+/* (#31) Subtle gradient at the bottom of the scrollable body suggests
+   "more content below" without being heavy. The padding-bottom keeps the
+   last card's edge clear of the gradient zone. */
+.body {
+  position: relative;
+  padding: 16px 16px 28px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.body::after {
+  content: "";
+  position: sticky;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  margin-top: -28px;
+  background: linear-gradient(to bottom, transparent, var(--color-surface) 70%);
+  pointer-events: none;
+}
+
+/* (#4/#5) Form alignment.
+ *
+ * The row is an auto-fit grid that wraps fields when the modal is narrow.
+ * Each `.field` is a flex column: label / input / hint. Every field
+ * always renders a hint span (real text or `&nbsp;`), so all fields share
+ * the same total height. With `align-items: end` on the row, fields'
+ * bottoms align — and since their heights are equal, their tops (and
+ * therefore inputs) align too. */
+.row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  column-gap: 16px;
+  row-gap: 14px;
+  align-items: end;
+}
+.row > button {
+  /* Buttons sit on the input row; same height as the input, so their
+     bottom + bottom of input both line up with the row baseline above
+     the hint slot. Hint slot's reserved 14px keeps button visually on
+     the input row. */
+  align-self: stretch;
+  margin-bottom: 18px;  /* approximately the hint-slot height + row gap */
+}
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.field label {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+}
+.field select,
+.field input {
+  background: var(--color-surface-deep);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 5px;
+  padding: 0 10px;
+  height: 32px;
+  font-size: 13px;
+  font-family: inherit;
+  transition: border-color 0.12s, box-shadow 0.12s;
+  min-width: 0;
+}
+.field input::placeholder {
+  color: var(--color-text-placeholder);
+}
+.field select:focus,
+.field input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 2px rgba(var(--color-accent-rgb), 0.2);
+}
+.field input[type="number"] {
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+/* (#14) Inline hint shown below an input. min-height ensures every field
+   reserves the same vertical space below its input, even when the hint
+   text is empty — keeps inputs aligned across columns of the row. */
+.fieldHint {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+  min-height: 14px;
+  line-height: 1.4;
+}
+
+/* (#13) Brighter primary button + hover lift. (#11/#12) Cancel has a
+   visible border + hover background so it doesn't disappear. */
+.primaryBtn {
+  background: var(--color-accent);
+  color: white;
+  border: 1px solid var(--color-accent);
+  border-radius: 5px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, transform 0.05s, box-shadow 0.12s;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+.primaryBtn:hover:not(:disabled) {
+  background: #7585ff;
+  border-color: #7585ff;
+  box-shadow: 0 2px 8px rgba(var(--color-accent-rgb), 0.4);
+}
+.primaryBtn:active:not(:disabled) { transform: translateY(1px); }
+.primaryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.secondaryBtn {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 5px;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.secondaryBtn:hover {
+  background: var(--color-surface-hover);
+  border-color: #4a4a55;
+}
+
+/* In-form Generate button — compact secondary style sized to the input
+   row instead of stretching full height. */
+.compactBtn {
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 4px;
+  padding: 0 12px;
+  height: 32px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  align-self: end;
+  margin-bottom: 18px;  /* line up with input bottom (above hint slot) */
+  white-space: nowrap;
+}
+.compactBtn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: rgba(var(--color-accent-rgb), 0.5);
+  color: var(--color-accent);
+}
+.compactBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--color-surface, #25262b);
+  border-radius: 6px;
+  font-size: 12px;
+}
+
+/* (#15) Make AI 生成文字 read clearly as a button — bordered + hover. */
+.aiBtn {
+  background: var(--color-surface-deep);
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  border-radius: 5px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.aiBtn:hover:not(:disabled) {
+  background: var(--color-surface-hover);
+  border-color: rgba(var(--color-accent-rgb), 0.6);
+  color: var(--color-accent);
+}
+.aiBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* (#17) Banner styles — ok = subtle, warn = clearly warning. */
+.bannerOk,
+.bannerWarn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.bannerOk {
+  background: rgba(var(--color-accent-rgb), 0.08);
+  color: var(--color-text);
+  border-left: 3px solid var(--color-accent);
+}
+.bannerOk strong {
+  color: var(--color-accent);
+}
+.bannerWarn {
+  background: rgba(245, 176, 66, 0.1);
+  color: #f3d191;
+  border-left: 3px solid #f5b042;
+}
+.bannerNote {
+  color: var(--color-text-muted);
+}
+.bannerIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: currentColor;
+  color: var(--color-bg);
+  font-weight: 700;
+  font-size: 12px;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.bannerOk .bannerIcon {
+  color: var(--color-bg);
+  background: var(--color-accent);
+}
+.bannerWarn .bannerIcon {
+  color: #1a1306;
+  background: #f5b042;
+}
+.totalLabel {
+  color: var(--color-text-muted, #888);
+}
+.totalValue {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.card {
+  background: var(--color-surface, #25262b);
+  border: 1px solid var(--color-border, #2c2d33);
+  border-radius: 6px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.thumb {
+  background: #000;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.thumbPlaceholder {
+  color: var(--color-text-muted, #888);
+  font-size: 11px;
+}
+/* (#21) Stronger backdrop so the label reads on bright thumbnails too. */
+.cardLabel {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  color: white;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* (per-card delete removed — was visually noisy and not strictly needed.
+   Stage management still works via 重新生成 + the inspector when on the
+   timeline.) */
+
+.cardBody {
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;  /* #25: more breathing room between rows */
+}
+.cardRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.cardRow label {
+  font-size: 10px;
+  color: var(--color-text-muted, #888);
+  width: 50px;
+  flex-shrink: 0;
+}
+/* min-width: 0 lets the input shrink so the reroll button keeps its space.
+   Without it, flex: 1 wants its content's intrinsic min-width and squeezes
+   the trailing button off the row. */
+.cardRow input,
+.cardRow textarea,
+.cardRow select {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-bg, #1c1d21);
+  color: inherit;
+  border: 1px solid var(--color-border, #2c2d33);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: "SF Mono", "Consolas", "Monaco", monospace;
+  font-variant-numeric: tabular-nums;
+}
+.cardRow select {
+  font-family: inherit;
+}
+/* (#30) Caption textarea grows comfortably and shows a resize handle. */
+.cardRow textarea {
+  font-family: inherit;
+  resize: vertical;
+  min-height: 48px;
+  line-height: 1.5;
+}
+.textRow {
+  flex-direction: column;
+  align-items: stretch;
+}
+.textRow label {
+  width: auto;
+  margin-bottom: 2px;
+}
+/* (#27) Reroll button — bigger, more obvious, never shrinks. */
+.rerollBtn {
+  background: var(--color-surface-hover);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  border-radius: 4px;
+  width: 28px;
+  height: 26px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  flex: 0 0 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+.rerollBtn:hover {
+  background: rgba(var(--color-accent-rgb), 0.18);
+  color: var(--color-accent);
+  border-color: rgba(var(--color-accent-rgb), 0.5);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--color-border, #2c2d33);
+}
+
+.empty {
+  text-align: center;
+  padding: 30px;
+  color: var(--color-text-muted, #888);
+  font-size: 12px;
+}

@@ -1,0 +1,304 @@
+.mediaBin {
+  display: flex;
+  flex-direction: row;
+  min-width: 150px;
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  overflow: hidden;
+}
+
+.tabContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text);
+  letter-spacing: 0.04em;
+}
+
+/* (#14) More breathing room between header buttons. */
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.viewToggle {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  width: 22px;
+  height: 22px;
+  border-radius: 3px;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+}
+.viewToggle:hover {
+  background: var(--color-surface-hover);
+}
+.viewToggleActive {
+  color: var(--color-accent);
+  background: var(--color-surface-hover);
+}
+
+.importBtn {
+  background: none;
+  border: 1px solid var(--color-border);
+  color: var(--color-text);
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+.importBtn:hover {
+  background: var(--color-surface-hover);
+}
+
+.searchBar {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+/* (#13) Wrap the search input so we can prefix a magnifier icon inside. */
+.searchInputWrap {
+  position: relative;
+  width: 100%;
+}
+/* (#27) Move the search icon further from the edge so it has its own
+   internal padding, matching the input's text padding. */
+.searchInputWrap::before {
+  content: "🔍";
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 11px;
+  pointer-events: none;
+  opacity: 0.85;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 6px 8px 6px 32px;  /* leave room for the icon */
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: var(--color-surface-deep);
+  color: var(--color-text);
+  font-size: 12px;
+}
+/* (#12) Brighter placeholder so it's readable. */
+.searchInput::placeholder {
+  color: var(--color-text-placeholder);
+}
+.searchInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.grid {
+  flex: 1;
+  overflow-y: auto;
+  padding: 4px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 4px;
+  align-content: start;
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  gap: 4px;
+  text-align: center;
+  padding: 16px;
+}
+
+.hint {
+  font-size: 11px;
+  opacity: 0.6;
+}
+
+.item {
+  display: flex;
+  gap: 8px;
+  padding: 6px;
+  border-radius: 4px;
+  cursor: grab;
+  border: 1px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+}
+.item:hover {
+  background: var(--color-surface-hover);
+}
+.item:active {
+  cursor: grabbing;
+}
+/* "Selected" state for audio items — stars the file as the auto-stage
+   background track. Accent border + check mark in the corner. */
+.itemSelected {
+  background: rgba(var(--color-accent-rgb), 0.15);
+  border-color: rgba(var(--color-accent-rgb), 0.55);
+}
+.itemSelected::before {
+  content: "★";
+  position: absolute;
+  margin-left: 38px;
+  margin-top: -2px;
+  color: var(--color-accent);
+  font-size: 11px;
+  text-shadow: 0 0 4px rgba(var(--color-accent-rgb), 0.6);
+}
+
+.thumb {
+  width: 48px;
+  height: 36px;
+  flex-shrink: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumbVideo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+.audioThumb {
+  color: var(--color-text-muted);
+  font-size: 18px;
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  gap: 2px;
+}
+
+/* (#16) Filename in primary text colour for clear hierarchy; meta in
+   secondary so the relationship reads at a glance. */
+.fileName {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meta {
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Grid view */
+.gridItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  cursor: grab;
+  border-radius: 4px;
+  padding: 3px;
+  transition: background 0.1s;
+}
+.gridItem:hover {
+  background: var(--color-surface-hover);
+}
+.gridItem:active {
+  cursor: grabbing;
+}
+
+.gridThumb {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 3px;
+  overflow: hidden;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gridDuration {
+  position: absolute;
+  bottom: 2px;
+  right: 3px;
+  font-size: 9px;
+  background: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.gridName {
+  font-size: 10px;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.comingSoon {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  gap: 4px;
+}
+
+.comingSoonLabel {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}

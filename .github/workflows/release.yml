@@ -1,0 +1,98 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0). A draft release will be created.'
+        required: true
+        type: string
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-14
+            target: aarch64-apple-darwin
+            name: macos-arm64
+          - platform: macos-13
+            target: x86_64-apple-darwin
+            name: macos-x64
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: windows-x64
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          key: ${{ matrix.target }}
+
+      - name: Install FFmpeg (macOS)
+        if: startsWith(matrix.platform, 'macos')
+        run: |
+          brew install ffmpeg pkg-config
+          echo "PKG_CONFIG_PATH=$(brew --prefix ffmpeg)/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+          # ffmpeg-next picks up dylibs at runtime via DYLD path; ensure
+          # bindgen finds headers during the build.
+          echo "BINDGEN_EXTRA_CLANG_ARGS=-I$(brew --prefix ffmpeg)/include" >> $GITHUB_ENV
+
+      - name: Install FFmpeg (Windows)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-full-shared.7z"
+          $dest = "$env:RUNNER_TEMP\ffmpeg.7z"
+          Invoke-WebRequest -Uri $url -OutFile $dest
+          7z x $dest -o"$env:RUNNER_TEMP\ffmpeg-extract" -y | Out-Null
+          $ffmpegDir = Get-ChildItem -Path "$env:RUNNER_TEMP\ffmpeg-extract" -Directory | Select-Object -First 1
+          $finalDir = "C:\ffmpeg"
+          Move-Item -Path $ffmpegDir.FullName -Destination $finalDir
+          echo "FFMPEG_DIR=$finalDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "$finalDir\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build and release (Tauri)
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS code signing (optional). Provide these secrets to enable
+          # signing + notarization. If absent, the build still succeeds but
+          # produces unsigned artifacts.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.event.inputs.tag || github.ref_name }}
+          releaseName: 'Video Editor ${{ github.event.inputs.tag || github.ref_name }}'
+          releaseBody: 'See the assets below to download and install.'
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}

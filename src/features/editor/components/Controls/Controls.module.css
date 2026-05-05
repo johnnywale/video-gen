@@ -1,0 +1,282 @@
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  /* macOS traffic-light buttons are at the very top-left of the window —
+     give them ~80px of horizontal breathing room. (#8) */
+  padding: 8px 14px 8px 88px;
+  background: var(--color-surface);
+  border-bottom: 1px solid var(--color-border);
+  flex-wrap: wrap;
+  min-height: 48px;
+}
+
+.toolbarGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* (#1) Brand mark — fills the empty top-left space and gives users a
+   sense of "I'm in <product>". Kept small and unobtrusive. */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-text);
+  letter-spacing: 0.04em;
+  cursor: default;
+  user-select: none;
+  /* (#15) Visual divider + extra right margin so the logo doesn't feel
+     glued to the next button. */
+  padding-right: 14px;
+  border-right: 1px solid var(--color-border);
+  margin-right: 4px;
+}
+.brandMark {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, var(--color-accent), #9a7dff);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+/* (#7) Centered project name area — fills the empty middle of the toolbar. */
+/* (#16/17) Brighter project name; the name itself is hover-able with a
+   subtle pencil cue so users discover the rename affordance. */
+.projectName {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--color-text);
+  font-weight: 500;
+  user-select: none;
+}
+.projectNameLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: text;
+  border: 1px solid transparent;
+}
+.projectNameLabel:hover {
+  background: var(--color-surface-hover);
+  border-color: var(--color-border);
+}
+.projectNameLabel:hover::after {
+  content: "✎";
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+.saveBadge {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.saveBadge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
+  display: inline-block;
+}
+
+/* (#19/20) All toolbar controls share a common 30px height + 6px radius so
+   they line up cleanly along the centerline of the bar. */
+.btn {
+  height: 30px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, background 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.btn:hover:not(:disabled) {
+  opacity: 0.92;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnSecondary {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.btnSecondary:hover {
+  background: var(--color-surface-hover);
+  border-color: #4a4a55;
+}
+
+/* (#6) Calmer green — the bright #2ea44f was visually shouting against the
+   dark theme; #3aa45e is dimmer and reads as "primary action" rather than
+   "alert". */
+.btnRender {
+  background: var(--color-success);
+  min-width: 120px;
+}
+.btnRender:hover:not(:disabled) {
+  background: var(--color-success-hover);
+  opacity: 1;
+}
+
+/* (#4) Path input now has a clearly higher background than the toolbar bg
+   so users see it as a target. (#5) Trailing folder icon button. */
+.pathInputWrap {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface-deep);
+  overflow: hidden;
+  height: 30px;
+}
+.pathInputWrap:focus-within {
+  border-color: var(--color-accent);
+}
+
+.pathInput {
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  width: 240px;
+  font-family: var(--font-mono);
+}
+.pathInput::placeholder {
+  color: var(--color-text-placeholder);
+}
+.pathInput:focus {
+  outline: none;
+}
+
+.pathPickerBtn {
+  border: none;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  padding: 0 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.pathPickerBtn:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
+
+.error {
+  color: var(--color-danger);
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--color-danger-subtle);
+  border-radius: 4px;
+}
+
+/* Export-success banner: shows on render_complete + auto-dismisses. */
+.success {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: rgba(58, 164, 94, 0.12);
+  border: 1px solid rgba(58, 164, 94, 0.5);
+  border-radius: 5px;
+  font-size: 12px;
+  color: var(--color-text);
+  flex-shrink: 0;
+  animation: slideIn 0.2s ease-out;
+}
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+.successIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--color-success);
+  color: white;
+  font-weight: 700;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.successPath {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  background: var(--color-surface-deep);
+  padding: 3px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 320px;
+}
+.successAction {
+  background: var(--color-success);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.successAction:hover {
+  background: var(--color-success-hover);
+}
+.successDismiss {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  font-size: 16px;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.successDismiss:hover {
+  background: var(--color-surface-hover);
+  color: var(--color-text);
+}
