@@ -85,14 +85,24 @@ export function AutoStagePanel({ onClose }: Props) {
       ? s.mediaFiles.find((m) => m.id === s.selectedAudioMediaId && !m.hasVideo) ?? null
       : null
   );
+  const transitionType = useEditorStore((s) => s.projectSettings.transitionType);
+  const transitionDuration = useEditorStore((s) => s.projectSettings.transitionDuration);
 
   const selectedMedia = videoMedia.find((m) => m.id === mediaId) ?? null;
+
+  // xfade overlaps adjacent clips, shaving (N-1)·td seconds off the export.
+  // To make the user-entered `duration` match the *exported* duration (not
+  // the on-timeline length), grow each stage so the post-xfade total lands
+  // back on `duration`.
+  const useXfadeCompensation = transitionType !== "none" && stageCount >= 2;
+  const xfadeOverhead = useXfadeCompensation ? (stageCount - 1) * transitionDuration : 0;
 
   // Generate plan + first batch of thumbnails
   const handleGenerate = useCallback(async () => {
     if (!selectedMedia || !selectedMedia.filePath) return;
+    const onTimelineDuration = duration + xfadeOverhead;
     const fresh = {
-      ...generateRandomStages(selectedMedia, duration, stageCount, undefined, { speed: DEFAULT_STAGE_SPEED }),
+      ...generateRandomStages(selectedMedia, onTimelineDuration, stageCount, undefined, { speed: DEFAULT_STAGE_SPEED }),
       voiceId,
     };
     setPlan(fresh);
@@ -114,7 +124,7 @@ export function AutoStagePanel({ onClose }: Props) {
     } finally {
       setIsFetchingThumbs(false);
     }
-  }, [selectedMedia, duration, stageCount, voiceId]);
+  }, [selectedMedia, duration, stageCount, voiceId, xfadeOverhead]);
 
   // Mirror voice changes onto an existing plan so the export pipeline gets
   // the latest selection (without forcing a full re-generation).
@@ -342,6 +352,10 @@ export function AutoStagePanel({ onClose }: Props) {
   }, [topicsManagerOpen, plan]);
 
   const total = plan ? totalPlanDuration(plan) : 0;
+  const stageCountForXfade = plan?.stages.length ?? 0;
+  const projectedOutput = transitionType !== "none" && stageCountForXfade >= 2
+    ? Math.max(0, total - (stageCountForXfade - 1) * transitionDuration)
+    : total;
 
   return (
     <>
@@ -485,7 +499,9 @@ export function AutoStagePanel({ onClose }: Props) {
                     ✨ {isGeneratingCaptions ? "生成中…" : "AI 生成文字"}
                   </button>
                   <span className={styles.totalValue}>
-                    总计：{total.toFixed(2)} 秒
+                    {projectedOutput !== total
+                      ? `输出 ${projectedOutput.toFixed(2)} 秒 · 时间线 ${total.toFixed(2)} 秒`
+                      : `总计：${total.toFixed(2)} 秒`}
                   </span>
                 </span>
               </div>
